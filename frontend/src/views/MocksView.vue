@@ -1,0 +1,152 @@
+<template>
+  <div class="flex flex-col gap-4 h-full">
+    <div class="flex items-center justify-between">
+      <h2 class="text-xl font-semibold">Mocks</h2>
+      <div class="flex gap-2">
+        <Select
+          v-model="selectedPortId"
+          :options="portOptions"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="All ports"
+          showClear
+          class="w-48"
+          @change="reload"
+        />
+        <Button label="New Mock" icon="pi pi-plus" @click="openCreate" />
+      </div>
+    </div>
+
+    <Splitter class="flex-1 rounded-xl shadow-sm overflow-hidden" style="height: calc(100vh - 160px)">
+      <SplitterPanel :size="60">
+        <DataTable
+          :value="mocksStore.mocks"
+          :loading="mocksStore.loading"
+          v-model:selection="selected"
+          selectionMode="single"
+          dataKey="id"
+          stripedRows
+          scrollable
+          scrollHeight="flex"
+          class="h-full"
+          @rowSelect="onRowSelect"
+        >
+          <Column field="method" header="Method" style="width:90px">
+            <template #body="{ data }">
+              <Badge :value="data.method" severity="info" />
+            </template>
+          </Column>
+          <Column field="path" header="Path" class="font-mono text-sm" />
+          <Column field="name" header="Name" />
+          <Column header="Status" style="width:80px">
+            <template #body="{ data }">
+              <ToggleSwitch :modelValue="data.enabled" @update:modelValue="v => mocksStore.toggleEnabled(data.id, v)" />
+            </template>
+          </Column>
+          <Column header="" style="width:80px">
+            <template #body="{ data }">
+              <div class="flex gap-1">
+                <Button icon="pi pi-pencil" size="small" text rounded @click.stop="openEdit(data)" />
+                <Button icon="pi pi-trash" severity="danger" size="small" text rounded @click.stop="confirmDelete(data)" />
+              </div>
+            </template>
+          </Column>
+        </DataTable>
+      </SplitterPanel>
+      <SplitterPanel :size="40" class="bg-surface-50 dark:bg-surface-800 p-4 overflow-auto">
+        <div v-if="!selected" class="text-surface-400 text-sm mt-8 text-center">Select a mock to view details</div>
+        <MockDetail v-else :mock="selected" />
+      </SplitterPanel>
+    </Splitter>
+
+    <MockDialog
+      v-model="dialogVisible"
+      :mock="editingMock"
+      :ports="portsStore.ports"
+      @save="onSave"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import DataTable from 'primevue/datatable'
+import Column from 'primevue/column'
+import Badge from 'primevue/badge'
+import Button from 'primevue/button'
+import Select from 'primevue/select'
+import Splitter from 'primevue/splitter'
+import SplitterPanel from 'primevue/splitterpanel'
+import ToggleSwitch from 'primevue/toggleswitch'
+import { useConfirm } from 'primevue/useconfirm'
+import { useToast } from 'primevue/usetoast'
+import { usePortsStore } from '../stores/ports'
+import { useMocksStore } from '../stores/mocks'
+import MockDialog from '../components/mocks/MockDialog.vue'
+import MockDetail from '../components/mocks/MockDetail.vue'
+import type { MockApi } from '../api/client'
+import { computed } from 'vue'
+
+const portsStore = usePortsStore()
+const mocksStore = useMocksStore()
+const confirm = useConfirm()
+const toast = useToast()
+
+const selected = ref<MockApi | null>(null)
+const dialogVisible = ref(false)
+const editingMock = ref<MockApi | undefined>()
+const selectedPortId = ref<number | null>(null)
+
+const portOptions = computed(() =>
+  portsStore.ports.map(p => ({ label: `${p.port} — ${p.label || 'unnamed'}`, value: p.id }))
+)
+
+async function reload() {
+  await mocksStore.fetchMocks(selectedPortId.value ?? undefined)
+}
+
+onMounted(async () => {
+  await portsStore.fetchPorts()
+  await mocksStore.fetchMocks()
+})
+
+function onRowSelect(e: { data: MockApi }) {
+  selected.value = e.data
+}
+
+function openCreate() {
+  editingMock.value = undefined
+  dialogVisible.value = true
+}
+
+function openEdit(mock: MockApi) {
+  editingMock.value = mock
+  dialogVisible.value = true
+}
+
+function confirmDelete(mock: MockApi) {
+  confirm.require({
+    message: `Delete mock "${mock.name}"?`,
+    header: 'Confirm',
+    icon: 'pi pi-exclamation-triangle',
+    accept: async () => {
+      await mocksStore.deleteMock(mock.id)
+      if (selected.value?.id === mock.id) selected.value = null
+      toast.add({ severity: 'success', summary: 'Deleted', life: 2000 })
+    },
+  })
+}
+
+async function onSave(form: Partial<MockApi>) {
+  try {
+    if (editingMock.value) {
+      await mocksStore.updateMock(editingMock.value.id, form)
+    } else {
+      await mocksStore.createMock(form)
+    }
+    toast.add({ severity: 'success', summary: 'Saved', life: 2000 })
+  } catch (e: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 4000 })
+  }
+}
+</script>
