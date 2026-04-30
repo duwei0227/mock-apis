@@ -86,6 +86,7 @@ pub struct App {
     pub modal_fields: Vec<String>,
     pub modal_field_idx: usize,
     pub modal_cursor_pos: usize,
+    pub cancel_confirm_pending: bool,
     pub confirm_message: String,
     pub confirm_action: Option<ConfirmAction>,
 
@@ -118,6 +119,7 @@ impl App {
             modal_fields: Vec::new(),
             modal_field_idx: 0,
             modal_cursor_pos: 0,
+            cancel_confirm_pending: false,
             confirm_message: String::new(),
             confirm_action: None,
             status_msg: None,
@@ -344,6 +346,7 @@ impl App {
         self.modal_fields.clear();
         self.modal_field_idx = 0;
         self.modal_cursor_pos = 0;
+        self.cancel_confirm_pending = false;
     }
 
     /// Build a CreateMockRequest from current modal fields.

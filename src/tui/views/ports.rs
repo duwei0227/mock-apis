@@ -123,8 +123,12 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
         f.render_widget(widget, inner[i]);
     }
 
-    let hint = Paragraph::new("Tab: next field  Enter: save  Esc: cancel")
-        .style(Style::default().fg(Color::DarkGray));
+    let (hint_text, hint_style) = if app.cancel_confirm_pending {
+        ("Discard changes?  Enter: yes  Esc: no", Style::default().fg(Color::Yellow))
+    } else {
+        ("Tab: next field  Enter: save  Esc: cancel", Style::default().fg(Color::DarkGray))
+    };
+    let hint = Paragraph::new(hint_text).style(hint_style);
     if let Some(last) = inner.last() {
         f.render_widget(hint, *last);
     }

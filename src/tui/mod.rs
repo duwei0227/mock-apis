@@ -171,6 +171,16 @@ async fn handle_modal_key(
 ) {
     use crossterm::event::KeyCode;
 
+    // If user pressed Esc and we're waiting for their confirmation to discard:
+    if app.cancel_confirm_pending {
+        match code {
+            KeyCode::Enter => { app.dismiss_modal(); }
+            KeyCode::Esc   => { app.cancel_confirm_pending = false; }
+            _ => {}
+        }
+        return;
+    }
+
     let is_mock_modal   = matches!(app.modal, Some(ModalKind::MockCreate) | Some(ModalKind::MockEdit));
     let on_port_field   = app.modal_field_idx == PORT_ID_FIELD_IDX;
     let on_method_field = app.modal_field_idx == METHOD_FIELD_IDX;
@@ -178,7 +188,8 @@ async fn handle_modal_key(
     let on_select_field = is_mock_modal && (on_port_field || on_method_field);
 
     match code {
-        KeyCode::Esc => app.dismiss_modal(),
+        KeyCode::Esc if matches!(app.modal, Some(ModalKind::Confirm)) => app.dismiss_modal(),
+        KeyCode::Esc => { app.cancel_confirm_pending = true; }
         KeyCode::Tab => app.modal_field_next(),
         KeyCode::BackTab => app.modal_field_prev(),
         KeyCode::Left if is_mock_modal && on_port_field    => app.cycle_port_field(false),

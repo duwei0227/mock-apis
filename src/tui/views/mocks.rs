@@ -154,23 +154,29 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
         f.render_widget(widget, inner[i]);
     }
 
-    let hint_text: String = if app.modal_field_idx == crate::tui::app::PORT_ID_FIELD_IDX
+    let (hint_text, hint_style) = if app.cancel_confirm_pending {
+        (
+            "Discard changes?  Enter: yes  Esc: no".to_owned(),
+            Style::default().fg(Color::Yellow),
+        )
+    } else if app.modal_field_idx == crate::tui::app::PORT_ID_FIELD_IDX
         || app.modal_field_idx == crate::tui::app::METHOD_FIELD_IDX
     {
-        "←/→: select  Tab: next  Enter: save  Esc: cancel".to_owned()
+        ("←/→: select  Tab: next  Enter: save  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
     } else if app.modal_field_idx == crate::tui::app::PATH_FIELD_IDX {
-        "Use {param} for path params (e.g. /users/{id})  Tab: next  Esc: cancel".to_owned()
+        ("Use {param} for path params (e.g. /users/{id})  Tab: next  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
     } else if app.modal_field_idx == crate::tui::app::HEADER_FIELD_IDX {
-        if let Some(sug) = app.header_autocomplete_suggestion() {
+        let text = if let Some(sug) = app.header_autocomplete_suggestion() {
             format!("→: \"{}\"  Use \"|\" to separate multiple  Tab: next  Esc: cancel", sug)
         } else {
             "Key: Value|Key2: Value2  Tab: next  Enter: save  Esc: cancel".to_owned()
-        }
+        };
+        (text, Style::default().fg(Color::DarkGray))
     } else {
-        "Tab: next  Enter: save  Esc: cancel".to_owned()
+        ("Tab: next  Enter: save  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
     };
     let hint = Paragraph::new(hint_text.as_str())
-        .style(Style::default().fg(Color::DarkGray));
+        .style(hint_style);
     if let Some(last) = inner.last() {
         f.render_widget(hint, *last);
     }
