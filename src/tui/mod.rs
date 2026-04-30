@@ -20,7 +20,7 @@ use crate::error::Result;
 use crate::traits::{LogStore, MockStore, PortManager, PortStore};
 use crate::AppState;
 
-use app::{App, ConfirmAction, ModalKind, Tab};
+use app::{App, ConfirmAction, ModalKind, Tab, HEADER_FIELD_IDX, METHOD_FIELD_IDX, PORT_ID_FIELD_IDX};
 use event::{spawn_event_task, Event};
 
 pub async fn run(state: AppState) -> Result<()> {
@@ -171,12 +171,26 @@ async fn handle_modal_key(
 ) {
     use crossterm::event::KeyCode;
 
+    let is_mock_modal   = matches!(app.modal, Some(ModalKind::MockCreate) | Some(ModalKind::MockEdit));
+    let on_port_field   = app.modal_field_idx == PORT_ID_FIELD_IDX;
+    let on_method_field = app.modal_field_idx == METHOD_FIELD_IDX;
+    let on_header_field = app.modal_field_idx == HEADER_FIELD_IDX;
+    let on_select_field = is_mock_modal && (on_port_field || on_method_field);
+
     match code {
         KeyCode::Esc => app.dismiss_modal(),
         KeyCode::Tab => app.modal_field_next(),
         KeyCode::BackTab => app.modal_field_prev(),
-        KeyCode::Backspace => app.modal_backspace(),
-        KeyCode::Char(c) => app.modal_type_char(c),
+        KeyCode::Left if is_mock_modal && on_port_field    => app.cycle_port_field(false),
+        KeyCode::Right if is_mock_modal && on_port_field   => app.cycle_port_field(true),
+        KeyCode::Left if is_mock_modal && on_method_field  => app.cycle_method_field(false),
+        KeyCode::Right if is_mock_modal && on_method_field => app.cycle_method_field(true),
+        KeyCode::Right if is_mock_modal && on_header_field
+            && app.header_autocomplete_suggestion().is_some() => app.accept_header_autocomplete(),
+        KeyCode::Left  if !on_select_field => app.modal_cursor_left(),
+        KeyCode::Right if !on_select_field => app.modal_cursor_right(),
+        KeyCode::Backspace if !on_select_field => app.modal_backspace(),
+        KeyCode::Char(c) if !on_select_field => app.modal_type_char(c),
         KeyCode::Enter => {
             match app.modal.clone() {
                 Some(ModalKind::PortCreate) => {

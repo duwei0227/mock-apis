@@ -23,8 +23,13 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         } else {
             Style::default()
         };
+        let port_label = app.ports.iter()
+            .find(|p| p.id == m.port_id)
+            .map(|p| format!(":{}", p.port))
+            .unwrap_or_else(|| m.port_id.to_string());
         Row::new(vec![
             Cell::from(m.id.to_string()),
+            Cell::from(port_label),
             Cell::from(m.method.to_string()),
             Cell::from(m.path.clone()),
             Cell::from(m.name.clone()),
@@ -36,6 +41,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         rows,
         [
             Constraint::Length(4),
+            Constraint::Length(7),
             Constraint::Length(8),
             Constraint::Min(20),
             Constraint::Min(15),
@@ -43,7 +49,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         ],
     )
     .header(
-        Row::new(vec!["ID", "Method", "Path", "Name", "On"])
+        Row::new(vec!["ID", "Port", "Method", "Path", "Name", "On"])
             .style(Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED)),
     )
     .block(Block::default().title(" Mocks ").borders(Borders::ALL));
@@ -80,7 +86,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
 
 const MOCK_LABELS: &[&str] = &[
     "Port ID", "Method", "Path", "Name", "Description",
-    "Response Status", "Delay (ms)", "Response Body",
+    "Response Status", "Delay (ms)", "Response Headers", "Response Body",
 ];
 
 pub fn draw_modal(f: &mut Frame, app: &App) {
@@ -90,7 +96,10 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
     let is_edit = matches!(app.modal, Some(ModalKind::MockEdit));
     let title = if is_edit { " Edit Mock " } else { " New Mock " };
 
-    let area = centered_rect(60, 80, f.area());
+    // Each field needs 3 rows (border+content+border), plus 1 for the hint.
+    let min_rows = (MOCK_LABELS.len() as u16) * 3 + 1 + 4; // +4 for modal border and margin
+    let height_pct = ((min_rows * 100) / f.area().height.max(1)).min(99);
+    let area = centered_rect(65, height_pct, f.area());
     f.render_widget(Clear, area);
 
     let block = Block::default().title(title).borders(Borders::ALL)
@@ -110,15 +119,57 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
         .split(area);
 
     for (i, label) in MOCK_LABELS.iter().enumerate() {
-        let value = app.modal_fields.get(i).map(|s| s.as_str()).unwrap_or("");
+        let raw = app.modal_fields.get(i).map(|s| s.as_str()).unwrap_or("");
+        let display = if i == crate::tui::app::PORT_ID_FIELD_IDX {
+            let port_id: i64 = raw.parse().unwrap_or(0);
+            if let Some(p) = app.ports.iter().find(|p| p.id == port_id) {
+                format!("◀ :{} {} ▶", p.port, p.label)
+            } else {
+                format!("◀ {} ▶", raw)
+            }
+        } else if i == crate::tui::app::METHOD_FIELD_IDX {
+            format!("◀ {} ▶", raw)
+        } else {
+            raw.to_owned()
+        };
         let is_active = app.modal_field_idx == i;
         let border_style = if is_active { Style::default().fg(Color::Cyan) } else { Style::default() };
-        let widget = Paragraph::new(value)
+        let is_select = i == crate::tui::app::PORT_ID_FIELD_IDX || i == crate::tui::app::METHOD_FIELD_IDX;
+        let content = if is_active && !is_select {
+            let chars: Vec<char> = display.chars().collect();
+            let cur = app.modal_cursor_pos.min(chars.len());
+            let before: String = chars[..cur].iter().collect();
+            let cursor_ch = chars.get(cur).copied().unwrap_or(' ');
+            let after: String = chars[cur.saturating_add(1).min(chars.len())..].iter().collect();
+            Line::from(vec![
+                Span::raw(before),
+                Span::styled(cursor_ch.to_string(), Style::default().add_modifier(Modifier::REVERSED)),
+                Span::raw(after),
+            ])
+        } else {
+            Line::from(display)
+        };
+        let widget = Paragraph::new(content)
             .block(Block::default().title(*label).borders(Borders::ALL).border_style(border_style));
         f.render_widget(widget, inner[i]);
     }
 
-    let hint = Paragraph::new("Tab: next  Enter: save  Esc: cancel")
+    let hint_text: String = if app.modal_field_idx == crate::tui::app::PORT_ID_FIELD_IDX
+        || app.modal_field_idx == crate::tui::app::METHOD_FIELD_IDX
+    {
+        "←/→: select  Tab: next  Enter: save  Esc: cancel".to_owned()
+    } else if app.modal_field_idx == crate::tui::app::PATH_FIELD_IDX {
+        "Use {param} for path params (e.g. /users/{id})  Tab: next  Esc: cancel".to_owned()
+    } else if app.modal_field_idx == crate::tui::app::HEADER_FIELD_IDX {
+        if let Some(sug) = app.header_autocomplete_suggestion() {
+            format!("→: \"{}\"  Use \"|\" to separate multiple  Tab: next  Esc: cancel", sug)
+        } else {
+            "Key: Value|Key2: Value2  Tab: next  Enter: save  Esc: cancel".to_owned()
+        }
+    } else {
+        "Tab: next  Enter: save  Esc: cancel".to_owned()
+    };
+    let hint = Paragraph::new(hint_text.as_str())
         .style(Style::default().fg(Color::DarkGray));
     if let Some(last) = inner.last() {
         f.render_widget(hint, *last);

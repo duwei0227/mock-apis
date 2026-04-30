@@ -104,7 +104,21 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
         } else {
             Style::default()
         };
-        let widget = Paragraph::new(value)
+        let content = if is_active {
+            let chars: Vec<char> = value.chars().collect();
+            let cur = app.modal_cursor_pos.min(chars.len());
+            let before: String = chars[..cur].iter().collect();
+            let cursor_ch = chars.get(cur).copied().unwrap_or(' ');
+            let after: String = chars[cur.saturating_add(1).min(chars.len())..].iter().collect();
+            Line::from(vec![
+                Span::raw(before),
+                Span::styled(cursor_ch.to_string(), Style::default().add_modifier(Modifier::REVERSED)),
+                Span::raw(after),
+            ])
+        } else {
+            Line::from(value)
+        };
+        let widget = Paragraph::new(content)
             .block(Block::default().title(*label).borders(Borders::ALL).border_style(border_style));
         f.render_widget(widget, inner[i]);
     }

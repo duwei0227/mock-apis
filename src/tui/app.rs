@@ -1,6 +1,41 @@
+use std::collections::HashMap;
+
 use crate::models::{LogEvent, MockApi, PortConfig, RequestLog, SystemLog};
 use crate::traits::{CreateMockRequest, UpdateMockRequest};
 use crate::AppState;
+
+pub const PORT_ID_FIELD_IDX: usize = 0;
+pub const METHOD_FIELD_IDX: usize = 1;
+pub const PATH_FIELD_IDX: usize = 2;
+pub const HEADER_FIELD_IDX: usize = 7;
+pub const HTTP_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE"];
+pub const COMMON_HEADERS: &[&str] = &[
+    "Content-Type: application/json",
+    "Content-Type: text/plain",
+    "Content-Type: text/html; charset=utf-8",
+    "Content-Type: application/xml",
+    "Cache-Control: no-cache",
+    "Cache-Control: no-store, max-age=0",
+    "Access-Control-Allow-Origin: *",
+];
+
+fn parse_headers(s: &str) -> HashMap<String, String> {
+    s.split('|')
+        .filter_map(|pair| {
+            let mut parts = pair.splitn(2, ':');
+            let key = parts.next()?.trim().to_owned();
+            let val = parts.next()?.trim().to_owned();
+            if key.is_empty() { None } else { Some((key, val)) }
+        })
+        .collect()
+}
+
+fn format_headers(h: &HashMap<String, String>) -> String {
+    h.iter()
+        .map(|(k, v)| format!("{}: {}", k, v))
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
@@ -50,6 +85,7 @@ pub struct App {
     pub modal: Option<ModalKind>,
     pub modal_fields: Vec<String>,
     pub modal_field_idx: usize,
+    pub modal_cursor_pos: usize,
     pub confirm_message: String,
     pub confirm_action: Option<ConfirmAction>,
 
@@ -81,6 +117,7 @@ impl App {
             modal: None,
             modal_fields: Vec::new(),
             modal_field_idx: 0,
+            modal_cursor_pos: 0,
             confirm_message: String::new(),
             confirm_action: None,
             status_msg: None,
@@ -139,10 +176,42 @@ impl App {
         }
     }
 
+    pub fn cycle_port_field(&mut self, forward: bool) {
+        if self.ports.is_empty() { return; }
+        let current_id: i64 = self.modal_fields
+            .get(PORT_ID_FIELD_IDX)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let pos = self.ports.iter().position(|p| p.id == current_id).unwrap_or(0);
+        let next = if forward {
+            (pos + 1) % self.ports.len()
+        } else {
+            (pos + self.ports.len() - 1) % self.ports.len()
+        };
+        if let Some(field) = self.modal_fields.get_mut(PORT_ID_FIELD_IDX) {
+            *field = self.ports[next].id.to_string();
+        }
+    }
+
+    pub fn cycle_method_field(&mut self, forward: bool) {
+        if let Some(current) = self.modal_fields.get(METHOD_FIELD_IDX) {
+            let pos = HTTP_METHODS.iter().position(|&m| m == current.as_str()).unwrap_or(0);
+            let next = if forward {
+                (pos + 1) % HTTP_METHODS.len()
+            } else {
+                (pos + HTTP_METHODS.len() - 1) % HTTP_METHODS.len()
+            };
+            if let Some(field) = self.modal_fields.get_mut(METHOD_FIELD_IDX) {
+                *field = HTTP_METHODS[next].to_owned();
+            }
+        }
+    }
+
     pub fn open_port_create(&mut self) {
         self.modal = Some(ModalKind::PortCreate);
         self.modal_fields = vec![String::new(), String::new()]; // [port, label]
         self.modal_field_idx = 0;
+        self.modal_cursor_pos = 0;
         self.status_msg = None;
     }
 
@@ -152,12 +221,35 @@ impl App {
             self.modal = Some(ModalKind::PortEdit);
             self.modal_fields = vec![port.to_string(), label];
             self.modal_field_idx = 0;
+            self.modal_cursor_pos = self.modal_fields[0].chars().count();
+        }
+    }
+
+    pub fn header_autocomplete_suggestion(&self) -> Option<&'static str> {
+        let current = self.modal_fields.get(HEADER_FIELD_IDX)?;
+        let prefix = current.rsplit(" | ").next().unwrap_or(current.as_str());
+        if prefix.is_empty() { return None; }
+        COMMON_HEADERS.iter().find(|&&h| {
+            h.to_lowercase().starts_with(&prefix.to_lowercase())
+        }).copied()
+    }
+
+    pub fn accept_header_autocomplete(&mut self) {
+        if let Some(suggestion) = self.header_autocomplete_suggestion() {
+            if let Some(field) = self.modal_fields.get_mut(HEADER_FIELD_IDX) {
+                if let Some(pos) = field.rfind(" | ") {
+                    field.truncate(pos + 3);
+                    field.push_str(suggestion);
+                } else {
+                    *field = suggestion.to_owned();
+                }
+            }
         }
     }
 
     pub fn open_mock_create(&mut self) {
         self.modal = Some(ModalKind::MockCreate);
-        // fields: [port_id, method, path, name, desc, status, delay, body]
+        // fields: [port_id, method, path, name, desc, status, delay, headers, body]
         let port_id = self.ports.first().map(|p| p.id.to_string()).unwrap_or_default();
         self.modal_fields = vec![
             port_id,
@@ -168,8 +260,10 @@ impl App {
             "200".into(),
             "0".into(),
             String::new(),
+            String::new(),
         ];
         self.modal_field_idx = 0;
+        self.modal_cursor_pos = 0;
     }
 
     pub fn open_mock_edit(&mut self) {
@@ -183,9 +277,11 @@ impl App {
                 m.description.clone(),
                 m.response_status.to_string(),
                 m.response_delay_ms.to_string(),
+                format_headers(&m.response_headers),
                 m.response_body.clone(),
             ];
             self.modal_field_idx = 0;
+            self.modal_cursor_pos = self.modal_fields[0].chars().count();
         }
     }
 
@@ -193,6 +289,10 @@ impl App {
         let len = self.modal_fields.len();
         if len > 0 {
             self.modal_field_idx = (self.modal_field_idx + 1) % len;
+            self.modal_cursor_pos = self.modal_fields
+                .get(self.modal_field_idx)
+                .map(|f| f.chars().count())
+                .unwrap_or(0);
         }
     }
 
@@ -200,18 +300,42 @@ impl App {
         let len = self.modal_fields.len();
         if len > 0 {
             self.modal_field_idx = (self.modal_field_idx + len - 1) % len;
+            self.modal_cursor_pos = self.modal_fields
+                .get(self.modal_field_idx)
+                .map(|f| f.chars().count())
+                .unwrap_or(0);
         }
     }
 
     pub fn modal_type_char(&mut self, c: char) {
         if let Some(field) = self.modal_fields.get_mut(self.modal_field_idx) {
-            field.push(c);
+            let char_count = field.chars().count();
+            let pos = self.modal_cursor_pos.min(char_count);
+            let byte_pos = field.char_indices().nth(pos).map(|(i, _)| i).unwrap_or(field.len());
+            field.insert(byte_pos, c);
+            self.modal_cursor_pos = pos + 1;
         }
     }
 
     pub fn modal_backspace(&mut self) {
         if let Some(field) = self.modal_fields.get_mut(self.modal_field_idx) {
-            field.pop();
+            if self.modal_cursor_pos > 0 {
+                let pos = self.modal_cursor_pos - 1;
+                let byte_pos = field.char_indices().nth(pos).map(|(i, _)| i).unwrap_or(0);
+                field.remove(byte_pos);
+                self.modal_cursor_pos = pos;
+            }
+        }
+    }
+
+    pub fn modal_cursor_left(&mut self) {
+        self.modal_cursor_pos = self.modal_cursor_pos.saturating_sub(1);
+    }
+
+    pub fn modal_cursor_right(&mut self) {
+        if let Some(field) = self.modal_fields.get(self.modal_field_idx) {
+            let max = field.chars().count();
+            self.modal_cursor_pos = (self.modal_cursor_pos + 1).min(max);
         }
     }
 
@@ -219,12 +343,13 @@ impl App {
         self.modal = None;
         self.modal_fields.clear();
         self.modal_field_idx = 0;
+        self.modal_cursor_pos = 0;
     }
 
     /// Build a CreateMockRequest from current modal fields.
     pub fn build_create_mock(&self) -> Option<CreateMockRequest> {
         let f = &self.modal_fields;
-        if f.len() < 8 { return None; }
+        if f.len() < 9 { return None; }
         use crate::models::HttpMethod;
         use std::str::FromStr;
         Some(CreateMockRequest {
@@ -235,9 +360,9 @@ impl App {
             description: f[4].clone(),
             request_schema: None,
             response_status: f[5].parse().unwrap_or(200),
-            response_headers: Default::default(),
-            response_body: f[7].clone(),
             response_delay_ms: f[6].parse().unwrap_or(0),
+            response_headers: parse_headers(&f[7]),
+            response_body: f[8].clone(),
         })
     }
 
@@ -252,7 +377,8 @@ impl App {
             description: f.get(4).cloned(),
             response_status: f.get(5).and_then(|s| s.parse().ok()),
             response_delay_ms: f.get(6).and_then(|s| s.parse().ok()),
-            response_body: f.get(7).cloned(),
+            response_headers: f.get(7).map(|s| parse_headers(s)),
+            response_body: f.get(8).cloned(),
             ..Default::default()
         }
     }

@@ -133,18 +133,20 @@ fn find_mock<'a>(mocks: &'a [MockApi], method: &HttpMethod, path: &str) -> Optio
     })
 }
 
-/// Simple glob-style path matching where `*` matches any segment.
+/// Path matching: `*` matches any single segment (trailing `*` matches remaining),
+/// `{param}` matches any single segment (named parameter style).
 fn path_matches(pattern: &str, path: &str) -> bool {
     if pattern == path {
         return true;
     }
-    if !pattern.contains('*') {
+    let is_wildcard = |seg: &str| seg == "*" || (seg.starts_with('{') && seg.ends_with('}'));
+    if !pattern.contains('*') && !pattern.contains('{') {
         return false;
     }
     let pattern_parts: Vec<&str> = pattern.split('/').collect();
     let path_parts: Vec<&str> = path.split('/').collect();
     if pattern_parts.len() != path_parts.len() {
-        // Allow trailing wildcard to match remaining segments.
+        // Allow trailing `*` to match remaining segments.
         if pattern_parts.last() != Some(&"*") {
             return false;
         }
@@ -154,10 +156,10 @@ fn path_matches(pattern: &str, path: &str) -> bool {
         return pattern_parts[..pattern_parts.len() - 1]
             .iter()
             .zip(path_parts.iter())
-            .all(|(p, s)| *p == "*" || p == s);
+            .all(|(p, s)| is_wildcard(p) || p == s);
     }
     pattern_parts
         .iter()
         .zip(path_parts.iter())
-        .all(|(p, s)| *p == "*" || p == s)
+        .all(|(p, s)| is_wildcard(p) || p == s)
 }
