@@ -182,9 +182,15 @@ async fn handle_modal_key(
                 Some(ModalKind::PortCreate) => {
                     let port: u16 = app.modal_fields.get(0).and_then(|s| s.parse().ok()).unwrap_or(8080);
                     let label = app.modal_fields.get(1).cloned().unwrap_or_default();
-                    if let Ok(_) = state.port_store.create_port(port, &label).await {
-                        app.dismiss_modal();
-                        refresh_ports(app).await;
+                    match state.port_store.create_port(port, &label).await {
+                        Ok(_) => {
+                            app.status_msg = None;
+                            app.dismiss_modal();
+                            refresh_ports(app).await;
+                        }
+                        Err(_) => {
+                            app.status_msg = Some(format!("Port {} is already in use", port));
+                        }
                     }
                 }
                 Some(ModalKind::PortEdit) => {

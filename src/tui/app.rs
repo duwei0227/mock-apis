@@ -143,6 +143,7 @@ impl App {
         self.modal = Some(ModalKind::PortCreate);
         self.modal_fields = vec![String::new(), String::new()]; // [port, label]
         self.modal_field_idx = 0;
+        self.status_msg = None;
     }
 
     pub fn open_port_edit(&mut self) {
