@@ -19,7 +19,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         let status_style = if running {
             Style::default().fg(Color::Green)
         } else {
-            Style::default().fg(Color::DarkGray)
+            Style::default().fg(Color::Gray)
         };
         let status = if running { "● Running" } else { "○ Stopped" };
         let style = if i == app.port_selected {
@@ -62,7 +62,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         Span::styled("d", Style::default().fg(Color::Red)),
         Span::raw(": delete  "),
         Span::styled("Space", Style::default().fg(Color::Cyan)),
-        Span::raw(": toggle  "),
+        Span::raw(": toggle port on/off  "),
         Span::styled("q", Style::default().fg(Color::Red)),
         Span::raw(": quit "),
     ]))

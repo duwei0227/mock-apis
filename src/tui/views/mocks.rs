@@ -17,7 +17,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
     // ---- mock list ----
     let rows: Vec<Row> = app.mocks.iter().enumerate().map(|(i, m)| {
         let enabled_sym = if m.enabled { "●" } else { "○" };
-        let enabled_style = if m.enabled { Style::default().fg(Color::Green) } else { Style::default().fg(Color::DarkGray) };
+        let enabled_style = if m.enabled { Style::default().fg(Color::Green) } else { Style::default().fg(Color::Gray) };
         let style = if i == app.mock_selected {
             Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD)
         } else {
@@ -72,7 +72,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         Span::styled("n", Style::default().fg(Color::Yellow)), Span::raw(": new  "),
         Span::styled("e", Style::default().fg(Color::Yellow)), Span::raw(": edit  "),
         Span::styled("d", Style::default().fg(Color::Red)),    Span::raw(": delete  "),
-        Span::styled("Space", Style::default().fg(Color::Cyan)), Span::raw(": toggle "),
+        Span::styled("Space", Style::default().fg(Color::Cyan)), Span::raw(": toggle mock on/off "),
     ]))
     .block(Block::default().borders(Borders::ALL));
     f.render_widget(help, chunks[2]);
