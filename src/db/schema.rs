@@ -64,6 +64,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         CREATE INDEX IF NOT EXISTS idx_system_logs_level      ON system_logs(level);
         CREATE INDEX IF NOT EXISTS idx_system_logs_created_at ON system_logs(created_at DESC);
     "),
+    ("0006_request_logs_ip_resp_headers", "
+        ALTER TABLE request_logs ADD COLUMN client_ip TEXT;
+        ALTER TABLE request_logs ADD COLUMN response_headers TEXT NOT NULL DEFAULT '{}';
+    "),
 ];
 
 pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {

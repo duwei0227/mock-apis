@@ -39,8 +39,10 @@ export interface RequestLog {
   request_headers: Record<string, string>
   request_body: string | null
   response_status: number
+  response_headers: Record<string, string>
   response_body: string | null
   duration_ms: number
+  client_ip: string | null
   created_at: string
 }
 

@@ -12,6 +12,7 @@ use crate::AppState;
 pub struct RequestLogQuery {
     pub port: Option<u16>,
     pub mock_api_id: Option<i64>,
+    pub path: Option<String>,
     pub since: Option<DateTime<Utc>>,
     pub until: Option<DateTime<Utc>>,
     pub page: Option<u32>,
@@ -34,6 +35,7 @@ pub async fn list_request_logs(
     let query = LogQuery {
         port: q.port,
         mock_api_id: q.mock_api_id,
+        path: q.path,
         since: q.since,
         until: q.until,
         page: q.page.unwrap_or(0),
@@ -76,6 +78,7 @@ pub async fn list_system_logs(
         page_size: q.page_size.unwrap_or(50),
         port: None,
         mock_api_id: None,
+        path: None,
     };
     match state.log_store.list_system_logs(query).await {
         Ok(page) => Json(page).into_response(),

@@ -77,6 +77,7 @@ pub trait MockStore: Send + Sync {
 pub struct LogQuery {
     pub port: Option<u16>,
     pub mock_api_id: Option<i64>,
+    pub path: Option<String>,
     pub level: Option<String>,
     pub since: Option<chrono::DateTime<chrono::Utc>>,
     pub until: Option<chrono::DateTime<chrono::Utc>>,

@@ -1,14 +1,14 @@
 <template>
-  <div class="flex h-screen bg-surface-50 dark:bg-surface-900">
+  <div class="flex h-screen bg-surface-100 dark:bg-surface-950">
     <AppSidebar />
     <div class="flex flex-col flex-1 overflow-hidden">
       <AppTopBar />
-      <main class="flex-1 overflow-auto p-4">
+      <main class="flex-1 overflow-auto p-5">
         <router-view />
       </main>
     </div>
   </div>
-  <Toast />
+  <Toast position="bottom-right" />
   <ConfirmDialog />
 </template>
 

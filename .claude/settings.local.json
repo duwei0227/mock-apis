@@ -9,7 +9,9 @@
       "Bash(cargo search *)",
       "Bash(cargo check *)",
       "Bash(npm run *)",
-      "Bash(cargo build *)"
+      "Bash(cargo build *)",
+      "Read(//home/duwei/workspace/rust/**)",
+      "Bash(touch src/dashboard/static_files.rs)"
     ]
   }
 }

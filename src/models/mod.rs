@@ -86,8 +86,10 @@ pub struct RequestLog {
     pub request_headers: HashMap<String, String>,
     pub request_body: Option<String>,
     pub response_status: u16,
+    pub response_headers: HashMap<String, String>,
     pub response_body: Option<String>,
     pub duration_ms: u64,
+    pub client_ip: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 

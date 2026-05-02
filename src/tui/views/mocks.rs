@@ -85,8 +85,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
 }
 
 const MOCK_LABELS: &[&str] = &[
-    "Port ID", "Method", "Path", "Name", "Description",
-    "Response Status", "Delay (ms)", "Response Headers", "Response Body",
+    "Port ID *", "Method *", "Path *", "Name *", "Description",
+    "Response Status *", "Delay (ms) *", "Response Headers", "Body Source *", "Response Body / File Path",
 ];
 
 pub fn draw_modal(f: &mut Frame, app: &App) {
@@ -96,8 +96,13 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
     let is_edit = matches!(app.modal, Some(ModalKind::MockEdit));
     let title = if is_edit { " Edit Mock " } else { " New Mock " };
 
-    // Each field needs 3 rows (border+content+border), plus 1 for the hint.
-    let min_rows = (MOCK_LABELS.len() as u16) * 3 + 1 + 4; // +4 for modal border and margin
+    let body_source = app.modal_fields.get(crate::tui::app::BODY_SOURCE_FIELD_IDX)
+        .map(|s| s.as_str())
+        .unwrap_or("Inline");
+    let body_field_height: u16 = if body_source == "Inline" { 12 } else { 3 };
+
+    // Each field needs 3 rows (border+content+border), body gets extra when Inline, plus 1 hint.
+    let min_rows = (MOCK_LABELS.len() as u16 - 1) * 3 + body_field_height + 1 + 4;
     let height_pct = ((min_rows * 100) / f.area().height.max(1)).min(99);
     let area = centered_rect(65, height_pct, f.area());
     f.render_widget(Clear, area);
@@ -108,7 +113,14 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
 
     let constraints: Vec<Constraint> = MOCK_LABELS
         .iter()
-        .map(|_| Constraint::Length(3))
+        .enumerate()
+        .map(|(i, _)| {
+            if i == crate::tui::app::BODY_FIELD_IDX {
+                Constraint::Length(body_field_height)
+            } else {
+                Constraint::Length(3)
+            }
+        })
         .chain(std::iter::once(Constraint::Min(1)))
         .collect();
 
@@ -129,40 +141,87 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
             }
         } else if i == crate::tui::app::METHOD_FIELD_IDX {
             format!("◀ {} ▶", raw)
+        } else if i == crate::tui::app::BODY_SOURCE_FIELD_IDX {
+            format!("◀ {} ▶", raw)
         } else {
             raw.to_owned()
         };
         let is_active = app.modal_field_idx == i;
         let border_style = if is_active { Style::default().fg(Color::Cyan) } else { Style::default() };
-        let is_select = i == crate::tui::app::PORT_ID_FIELD_IDX || i == crate::tui::app::METHOD_FIELD_IDX;
-        let content = if is_active && !is_select {
-            let chars: Vec<char> = display.chars().collect();
-            let cur = app.modal_cursor_pos.min(chars.len());
-            let before: String = chars[..cur].iter().collect();
-            let cursor_ch = chars.get(cur).copied().unwrap_or(' ');
-            let after: String = chars[cur.saturating_add(1).min(chars.len())..].iter().collect();
-            Line::from(vec![
-                Span::raw(before),
-                Span::styled(cursor_ch.to_string(), Style::default().add_modifier(Modifier::REVERSED)),
-                Span::raw(after),
-            ])
+        let is_select = i == crate::tui::app::PORT_ID_FIELD_IDX
+            || i == crate::tui::app::METHOD_FIELD_IDX
+            || i == crate::tui::app::BODY_SOURCE_FIELD_IDX;
+        // Dynamic label for the body field.
+        let effective_label = if i == crate::tui::app::BODY_FIELD_IDX {
+            if body_source == "File" { "File Path (json/txt) *" } else { "Response Body" }
         } else {
-            Line::from(display)
+            label
         };
-        let widget = Paragraph::new(content)
-            .block(Block::default().title(*label).borders(Borders::ALL).border_style(border_style));
+        let is_multiline_body = i == crate::tui::app::BODY_FIELD_IDX && body_source == "Inline";
+        let widget = if is_active && !is_select {
+            if is_multiline_body {
+                // Split on newlines; place cursor block on the correct line/col.
+                let chars: Vec<char> = display.chars().collect();
+                let cur = app.modal_cursor_pos.min(chars.len());
+                let before: String = chars[..cur].iter().collect();
+                let cursor_ch = chars.get(cur).copied().unwrap_or(' ');
+                let after: String = chars[cur.saturating_add(1).min(chars.len())..].iter().collect();
+                let full = format!("{}\x00{}{}", before, cursor_ch, after);
+                let lines: Vec<Line> = full.split('\n').map(|line| {
+                    if let Some(pos) = line.find('\x00') {
+                        let b = &line[..pos];
+                        let c = line[pos+1..].chars().next().unwrap_or(' ');
+                        let a = &line[pos+1..].chars().skip(1).collect::<String>();
+                        Line::from(vec![
+                            Span::raw(b.to_owned()),
+                            Span::styled(c.to_string(), Style::default().add_modifier(Modifier::REVERSED)),
+                            Span::raw(a.clone()),
+                        ])
+                    } else {
+                        Line::from(line.to_owned())
+                    }
+                }).collect();
+                Paragraph::new(lines)
+                    .block(Block::default().title(effective_label).borders(Borders::ALL).border_style(border_style))
+            } else {
+                let chars: Vec<char> = display.chars().collect();
+                let cur = app.modal_cursor_pos.min(chars.len());
+                let before: String = chars[..cur].iter().collect();
+                let cursor_ch = chars.get(cur).copied().unwrap_or(' ');
+                let after: String = chars[cur.saturating_add(1).min(chars.len())..].iter().collect();
+                Paragraph::new(Line::from(vec![
+                    Span::raw(before),
+                    Span::styled(cursor_ch.to_string(), Style::default().add_modifier(Modifier::REVERSED)),
+                    Span::raw(after),
+                ]))
+                .block(Block::default().title(effective_label).borders(Borders::ALL).border_style(border_style))
+            }
+        } else if is_multiline_body {
+            let lines: Vec<Line> = display.split('\n').map(|l| Line::from(l.to_owned())).collect();
+            Paragraph::new(lines)
+                .block(Block::default().title(effective_label).borders(Borders::ALL).border_style(border_style))
+        } else {
+            Paragraph::new(Line::from(display))
+                .block(Block::default().title(effective_label).borders(Borders::ALL).border_style(border_style))
+        };
         f.render_widget(widget, inner[i]);
     }
 
-    let (hint_text, hint_style) = if app.cancel_confirm_pending {
+    let (hint_text, hint_style) = if let Some(err) = &app.modal_error {
+        (err.clone(), Style::default().fg(Color::Red))
+    } else if app.cancel_confirm_pending {
         (
             "Discard changes?  Enter: yes  Esc: no".to_owned(),
             Style::default().fg(Color::Yellow),
         )
+    } else if app.modal_field_idx == crate::tui::app::BODY_SOURCE_FIELD_IDX {
+        ("Inline: type body directly  |  File: load from file (json/txt)  ←/→: select  Tab: next".to_owned(), Style::default().fg(Color::DarkGray))
     } else if app.modal_field_idx == crate::tui::app::PORT_ID_FIELD_IDX
         || app.modal_field_idx == crate::tui::app::METHOD_FIELD_IDX
     {
         ("←/→: select  Tab: next  Enter: save  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
+    } else if app.modal_field_idx == crate::tui::app::BODY_FIELD_IDX && body_source == "File" {
+        ("Enter full file path (e.g. /home/user/data.json)  Tab: next  Enter: save  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
     } else if app.modal_field_idx == crate::tui::app::PATH_FIELD_IDX {
         ("Use {param} for path params (e.g. /users/{id})  Tab: next  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
     } else if app.modal_field_idx == crate::tui::app::HEADER_FIELD_IDX {

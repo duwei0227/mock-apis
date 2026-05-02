@@ -2,6 +2,8 @@ pub mod routes;
 pub mod static_files;
 pub mod ws;
 
+use std::net::UdpSocket;
+
 use axum::routing::{delete, get, patch, post, put};
 use axum::Router;
 use tower_http::cors::CorsLayer;
@@ -16,7 +18,8 @@ pub async fn run(state: AppState, mgmt_port: u16) -> Result<()> {
     let addr = format!("0.0.0.0:{}", mgmt_port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
-    tracing::info!("Dashboard listening on http://{}", addr);
+    let display_ip = local_ip().unwrap_or_else(|| "127.0.0.1".to_owned());
+    tracing::info!("Dashboard listening on http://{}:{}", display_ip, mgmt_port);
 
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
@@ -25,6 +28,14 @@ pub async fn run(state: AppState, mgmt_port: u16) -> Result<()> {
         .await?;
 
     Ok(())
+}
+
+fn local_ip() -> Option<String> {
+    // Connect a UDP socket to a public address without sending data — the OS
+    // picks the outbound interface and we read back the local address.
+    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    Some(socket.local_addr().ok()?.ip().to_string())
 }
 
 fn build_router(state: AppState) -> Router {

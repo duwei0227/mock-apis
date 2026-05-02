@@ -8,7 +8,10 @@ pub const PORT_ID_FIELD_IDX: usize = 0;
 pub const METHOD_FIELD_IDX: usize = 1;
 pub const PATH_FIELD_IDX: usize = 2;
 pub const HEADER_FIELD_IDX: usize = 7;
+pub const BODY_SOURCE_FIELD_IDX: usize = 8;
+pub const BODY_FIELD_IDX: usize = 9;
 pub const HTTP_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE"];
+pub const BODY_SOURCES: &[&str] = &["Inline", "File"];
 pub const COMMON_HEADERS: &[&str] = &[
     "Content-Type: application/json",
     "Content-Type: text/plain",
@@ -18,6 +21,18 @@ pub const COMMON_HEADERS: &[&str] = &[
     "Cache-Control: no-store, max-age=0",
     "Access-Control-Allow-Origin: *",
 ];
+
+fn collapse_whitespace(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn encode_body_field(source: &str, body: &str) -> String {
+    if source == "File" && !body.is_empty() {
+        format!("file://{}", body)
+    } else {
+        body.to_owned()
+    }
+}
 
 fn parse_headers(s: &str) -> HashMap<String, String> {
     s.split('|')
@@ -80,6 +95,7 @@ pub struct App {
     pub system_logs: Vec<SystemLog>,
     pub log_follow: bool,
     pub log_selected: usize,
+    pub log_detail_open: bool,
 
     // Modal
     pub modal: Option<ModalKind>,
@@ -91,6 +107,7 @@ pub struct App {
     pub confirm_action: Option<ConfirmAction>,
 
     pub status_msg: Option<String>,
+    pub modal_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +132,7 @@ impl App {
             system_logs: Vec::new(),
             log_follow: true,
             log_selected: 0,
+            log_detail_open: false,
             modal: None,
             modal_fields: Vec::new(),
             modal_field_idx: 0,
@@ -123,6 +141,7 @@ impl App {
             confirm_message: String::new(),
             confirm_action: None,
             status_msg: None,
+            modal_error: None,
         }
     }
 
@@ -249,9 +268,23 @@ impl App {
         }
     }
 
+    pub fn cycle_body_source_field(&mut self, forward: bool) {
+        if let Some(current) = self.modal_fields.get(BODY_SOURCE_FIELD_IDX) {
+            let pos = BODY_SOURCES.iter().position(|&s| s == current.as_str()).unwrap_or(0);
+            let next = if forward {
+                (pos + 1) % BODY_SOURCES.len()
+            } else {
+                (pos + BODY_SOURCES.len() - 1) % BODY_SOURCES.len()
+            };
+            if let Some(field) = self.modal_fields.get_mut(BODY_SOURCE_FIELD_IDX) {
+                *field = BODY_SOURCES[next].to_owned();
+            }
+        }
+    }
+
     pub fn open_mock_create(&mut self) {
         self.modal = Some(ModalKind::MockCreate);
-        // fields: [port_id, method, path, name, desc, status, delay, headers, body]
+        // fields: [port_id, method, path, name, desc, status, delay, headers, body_source, body]
         let port_id = self.ports.first().map(|p| p.id.to_string()).unwrap_or_default();
         self.modal_fields = vec![
             port_id,
@@ -262,6 +295,7 @@ impl App {
             "200".into(),
             "0".into(),
             String::new(),
+            "Inline".into(),
             String::new(),
         ];
         self.modal_field_idx = 0;
@@ -271,6 +305,11 @@ impl App {
     pub fn open_mock_edit(&mut self) {
         if let Some(m) = self.selected_mock().cloned() {
             self.modal = Some(ModalKind::MockEdit);
+            let (body_source, body) = if m.response_body.starts_with("file://") {
+                ("File".to_owned(), m.response_body["file://".len()..].to_owned())
+            } else {
+                ("Inline".to_owned(), m.response_body.clone())
+            };
             self.modal_fields = vec![
                 m.port_id.to_string(),
                 m.method.to_string(),
@@ -280,7 +319,8 @@ impl App {
                 m.response_status.to_string(),
                 m.response_delay_ms.to_string(),
                 format_headers(&m.response_headers),
-                m.response_body.clone(),
+                body_source,
+                body,
             ];
             self.modal_field_idx = 0;
             self.modal_cursor_pos = self.modal_fields[0].chars().count();
@@ -330,6 +370,26 @@ impl App {
         }
     }
 
+    pub fn modal_paste(&mut self, text: &str) {
+        let trimmed = text.trim();
+        let cleaned = if trimmed.starts_with('{') || trimmed.starts_with('[') {
+            // Try compact JSON serialization first; collapse whitespace as fallback.
+            serde_json::from_str::<serde_json::Value>(trimmed)
+                .ok()
+                .and_then(|v| serde_json::to_string(&v).ok())
+                .unwrap_or_else(|| collapse_whitespace(trimmed))
+        } else {
+            collapse_whitespace(trimmed)
+        };
+        if let Some(field) = self.modal_fields.get_mut(self.modal_field_idx) {
+            let char_count = field.chars().count();
+            let pos = self.modal_cursor_pos.min(char_count);
+            let byte_pos = field.char_indices().nth(pos).map(|(i, _)| i).unwrap_or(field.len());
+            field.insert_str(byte_pos, &cleaned);
+            self.modal_cursor_pos = pos + cleaned.chars().count();
+        }
+    }
+
     pub fn modal_cursor_left(&mut self) {
         self.modal_cursor_pos = self.modal_cursor_pos.saturating_sub(1);
     }
@@ -347,14 +407,44 @@ impl App {
         self.modal_field_idx = 0;
         self.modal_cursor_pos = 0;
         self.cancel_confirm_pending = false;
+        self.modal_error = None;
+    }
+
+    pub fn validate_port_modal(&self) -> Option<String> {
+        let port = self.modal_fields.get(0).map(|s| s.as_str()).unwrap_or("");
+        if port.is_empty() {
+            return Some("Port number is required".to_owned());
+        }
+        if port.parse::<u16>().map(|p| p == 0).unwrap_or(true) {
+            return Some("Port number must be a valid number (1–65535)".to_owned());
+        }
+        None
+    }
+
+    pub fn validate_mock_modal(&self) -> Option<String> {
+        let path = self.modal_fields.get(PATH_FIELD_IDX).map(|s| s.as_str()).unwrap_or("");
+        if path.is_empty() {
+            return Some("Path is required".to_owned());
+        }
+        let name = self.modal_fields.get(3).map(|s| s.as_str()).unwrap_or("");
+        if name.is_empty() {
+            return Some("Name is required".to_owned());
+        }
+        let body_source = self.modal_fields.get(BODY_SOURCE_FIELD_IDX).map(|s| s.as_str()).unwrap_or("Inline");
+        let body = self.modal_fields.get(BODY_FIELD_IDX).map(|s| s.as_str()).unwrap_or("");
+        if body_source == "File" && body.is_empty() {
+            return Some("File path is required when Body Source is File".to_owned());
+        }
+        None
     }
 
     /// Build a CreateMockRequest from current modal fields.
     pub fn build_create_mock(&self) -> Option<CreateMockRequest> {
         let f = &self.modal_fields;
-        if f.len() < 9 { return None; }
+        if f.len() < 10 { return None; }
         use crate::models::HttpMethod;
         use std::str::FromStr;
+        let response_body = encode_body_field(&f[8], &f[9]);
         Some(CreateMockRequest {
             port_id: f[0].parse().ok()?,
             method: HttpMethod::from_str(&f[1]).unwrap_or(HttpMethod::GET),
@@ -365,7 +455,7 @@ impl App {
             response_status: f[5].parse().unwrap_or(200),
             response_delay_ms: f[6].parse().unwrap_or(0),
             response_headers: parse_headers(&f[7]),
-            response_body: f[8].clone(),
+            response_body,
         })
     }
 
@@ -373,6 +463,12 @@ impl App {
         let f = &self.modal_fields;
         use crate::models::HttpMethod;
         use std::str::FromStr;
+        let response_body = if f.len() >= 10 {
+            Some(encode_body_field(f.get(8).map(|s| s.as_str()).unwrap_or("Inline"),
+                                   f.get(9).map(|s| s.as_str()).unwrap_or("")))
+        } else {
+            f.get(9).cloned()
+        };
         UpdateMockRequest {
             method: f.get(1).and_then(|s| HttpMethod::from_str(s).ok()),
             path: f.get(2).cloned(),
@@ -381,7 +477,7 @@ impl App {
             response_status: f.get(5).and_then(|s| s.parse().ok()),
             response_delay_ms: f.get(6).and_then(|s| s.parse().ok()),
             response_headers: f.get(7).map(|s| parse_headers(s)),
-            response_body: f.get(8).cloned(),
+            response_body,
             ..Default::default()
         }
     }

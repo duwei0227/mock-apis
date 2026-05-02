@@ -24,8 +24,14 @@ fn row_to_request_log(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestLog> {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
 
+    let response_headers: HashMap<String, String> = row
+        .get::<_, String>(12)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
     let created_at = row
-        .get::<_, String>(11)
+        .get::<_, String>(13)
         .ok()
         .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
         .map(|dt| dt.with_timezone(&chrono::Utc))
@@ -41,8 +47,10 @@ fn row_to_request_log(row: &rusqlite::Row<'_>) -> rusqlite::Result<RequestLog> {
         request_headers,
         request_body: row.get(6)?,
         response_status: row.get::<_, i64>(8)? as u16,
+        response_headers,
         response_body: row.get(9)?,
         duration_ms: row.get::<_, i64>(10)? as u64,
+        client_ip: row.get(11)?,
         created_at,
     })
 }
@@ -72,8 +80,10 @@ fn row_to_system_log(row: &rusqlite::Row<'_>) -> rusqlite::Result<SystemLog> {
 #[async_trait]
 impl LogStore for SqliteLogStore {
     async fn append_request_log(&self, log: RequestLog) -> Result<i64> {
-        let headers_json =
+        let req_headers_json =
             serde_json::to_string(&log.request_headers).unwrap_or_else(|_| "{}".into());
+        let resp_headers_json =
+            serde_json::to_string(&log.response_headers).unwrap_or_else(|_| "{}".into());
         let port = log.port as i64;
         let status = log.response_status as i64;
         let dur = log.duration_ms as i64;
@@ -83,8 +93,9 @@ impl LogStore for SqliteLogStore {
                 conn.execute(
                     "INSERT INTO request_logs \
                      (mock_api_id, port, method, path, query_string, \
-                      request_body, request_headers, response_status, response_body, duration_ms) \
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                      request_body, request_headers, response_status, response_body, \
+                      duration_ms, client_ip, response_headers) \
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
                     rusqlite::params![
                         log.mock_api_id,
                         port,
@@ -92,10 +103,12 @@ impl LogStore for SqliteLogStore {
                         log.path,
                         log.query_string,
                         log.request_body,
-                        headers_json,
+                        req_headers_json,
                         status,
                         log.response_body,
                         dur,
+                        log.client_ip,
+                        resp_headers_json,
                     ],
                 )?;
                 Ok(conn.last_insert_rowid())
@@ -123,6 +136,12 @@ impl LogStore for SqliteLogStore {
                     conditions.push(format!("mock_api_id = ?{}", conditions.len() + 1));
                     count_params.push(Box::new(mid));
                     data_params.push(Box::new(mid));
+                }
+                if let Some(ref path) = query.path {
+                    let pattern = format!("%{}%", path);
+                    conditions.push(format!("path LIKE ?{}", conditions.len() + 1));
+                    count_params.push(Box::new(pattern.clone()));
+                    data_params.push(Box::new(pattern));
                 }
                 if let Some(since) = query.since {
                     conditions.push(format!("created_at >= ?{}", conditions.len() + 1));
@@ -153,7 +172,7 @@ impl LogStore for SqliteLogStore {
                 let data_sql = format!(
                     "SELECT id, mock_api_id, port, method, path, query_string, \
                      request_body, request_headers, response_status, response_body, \
-                     duration_ms, created_at \
+                     duration_ms, client_ip, response_headers, created_at \
                      FROM request_logs {} ORDER BY created_at DESC \
                      LIMIT ?{} OFFSET ?{}",
                     where_clause,
@@ -187,7 +206,7 @@ impl LogStore for SqliteLogStore {
                 let mut stmt = conn.prepare(
                     "SELECT id, mock_api_id, port, method, path, query_string, \
                      request_body, request_headers, response_status, response_body, \
-                     duration_ms, created_at \
+                     duration_ms, client_ip, response_headers, created_at \
                      FROM request_logs WHERE id = ?1",
                 )?;
                 let mut rows = stmt.query_map(rusqlite::params![id], row_to_request_log)?;

@@ -31,13 +31,16 @@
           class="h-full"
           @rowSelect="onRowSelect"
         >
+          <Column header="Port" style="width:70px" class="font-mono">
+            <template #body="{ data }">{{ portMap[data.port_id] ?? data.port_id }}</template>
+          </Column>
+          <Column field="name" header="Name" style="min-width:120px" />
+          <Column field="path" header="Path" class="font-mono text-sm" />
           <Column field="method" header="Method" style="width:90px">
             <template #body="{ data }">
               <Badge :value="data.method" severity="info" />
             </template>
           </Column>
-          <Column field="path" header="Path" class="font-mono text-sm" />
-          <Column field="name" header="Name" />
           <Column header="Status" style="width:80px">
             <template #body="{ data }">
               <ToggleSwitch :modelValue="data.enabled" @update:modelValue="v => mocksStore.toggleEnabled(data.id, v)" />
@@ -99,6 +102,10 @@ const selectedPortId = ref<number | null>(null)
 
 const portOptions = computed(() =>
   portsStore.ports.map(p => ({ label: `${p.port} — ${p.label || 'unnamed'}`, value: p.id }))
+)
+
+const portMap = computed(() =>
+  Object.fromEntries(portsStore.ports.map(p => [p.id, p.port]))
 )
 
 async function reload() {

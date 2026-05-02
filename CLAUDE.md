@@ -9,10 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cargo build
 
 # Run (TUI mode, default)
-cargo run -- --db mock-apis.db
+cargo run
 
-# Run (web dashboard mode on port 9999)
-cargo run -- --dashboard --port 9999 --db mock-apis.db
+# Run (web dashboard mode, opens http://localhost:9999)
+cargo run -- --dashboard
 
 # Check without producing a binary
 cargo check

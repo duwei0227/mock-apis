@@ -12,15 +12,19 @@
       <span>{{ mock.response_delay_ms }} ms</span>
     </div>
     <div>
-      <p class="text-surface-400 mb-1">Headers</p>
+      <p class="text-surface-400 mb-1">Response Headers</p>
       <div v-if="Object.keys(mock.response_headers).length === 0" class="text-surface-300 italic">none</div>
       <div v-else v-for="(v, k) in mock.response_headers" :key="k" class="flex gap-2 font-mono text-xs">
         <span class="text-primary-500">{{ k }}:</span><span>{{ v }}</span>
       </div>
     </div>
     <div>
-      <p class="text-surface-400 mb-1">Body</p>
-      <pre class="bg-surface-100 dark:bg-surface-900 p-3 rounded text-xs overflow-auto max-h-64 whitespace-pre-wrap">{{ prettyBody }}</pre>
+      <p class="text-surface-400 mb-1">Response Body</p>
+      <div v-if="isFile" class="flex items-center gap-2 text-xs text-surface-400 italic">
+        <i class="pi pi-file" />
+        From file: <span class="font-mono text-primary-400">{{ filePath }}</span>
+      </div>
+      <pre v-else class="bg-surface-100 dark:bg-surface-900 p-3 rounded text-xs overflow-auto max-h-64 whitespace-pre-wrap">{{ prettyBody }}</pre>
     </div>
   </div>
 </template>
@@ -32,7 +36,11 @@ import type { MockApi } from '../../api/client'
 
 const props = defineProps<{ mock: MockApi }>()
 
+const isFile   = computed(() => props.mock.response_body.startsWith('file://'))
+const filePath = computed(() => props.mock.response_body.slice('file://'.length))
+
 const prettyBody = computed(() => {
+  if (isFile.value) return ''
   try { return JSON.stringify(JSON.parse(props.mock.response_body), null, 2) }
   catch { return props.mock.response_body }
 })

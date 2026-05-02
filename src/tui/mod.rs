@@ -3,6 +3,7 @@ pub mod event;
 pub mod views;
 
 use crossterm::{
+    event::{DisableBracketedPaste, EnableBracketedPaste},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -20,20 +21,20 @@ use crate::error::Result;
 use crate::traits::{LogStore, MockStore, PortManager, PortStore};
 use crate::AppState;
 
-use app::{App, ConfirmAction, ModalKind, Tab, HEADER_FIELD_IDX, METHOD_FIELD_IDX, PORT_ID_FIELD_IDX};
+use app::{App, ConfirmAction, ModalKind, Tab, BODY_SOURCE_FIELD_IDX, HEADER_FIELD_IDX, METHOD_FIELD_IDX, PORT_ID_FIELD_IDX};
 use event::{spawn_event_task, Event};
 
 pub async fn run(state: AppState) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableBracketedPaste)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let result = run_loop(&mut terminal, state).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(terminal.backend_mut(), DisableBracketedPaste, LeaveAlternateScreen)?;
     terminal.show_cursor()?;
 
     result
@@ -62,6 +63,11 @@ async fn run_loop(
         match ev {
             Event::Log(log_ev) => {
                 app.push_log_event(log_ev);
+            }
+            Event::Paste(text) => {
+                if app.modal.is_some() {
+                    app.modal_paste(&text);
+                }
             }
             Event::Tick => {}
             Event::Resize(_, _) => {}
@@ -154,11 +160,18 @@ async fn handle_normal_key(
             KeyCode::Char('2') => app.active_tab = Tab::Mocks,
             KeyCode::Char('3') => app.active_tab = Tab::Logs,
             KeyCode::Tab       => app.active_tab = app.active_tab.next(),
+            KeyCode::Esc       => { app.log_detail_open = false; }
+            KeyCode::Enter => {
+                if app.log_tab == crate::tui::app::LogTab::Request {
+                    app.log_follow = false;
+                    app.log_detail_open = !app.log_detail_open;
+                }
+            }
             KeyCode::Down | KeyCode::Char('j') => { app.log_follow = false; app.log_nav_down(); }
             KeyCode::Up   | KeyCode::Char('k') => { app.log_follow = false; app.log_nav_up(); }
-            KeyCode::Char('f') => app.log_follow = !app.log_follow,
-            KeyCode::Char('r') => app.log_tab = crate::tui::app::LogTab::Request,
-            KeyCode::Char('s') => app.log_tab = crate::tui::app::LogTab::System,
+            KeyCode::Char('f') => { app.log_follow = !app.log_follow; if app.log_follow { app.log_detail_open = false; } }
+            KeyCode::Char('r') => { app.log_tab = crate::tui::app::LogTab::Request; app.log_detail_open = false; }
+            KeyCode::Char('s') => { app.log_tab = crate::tui::app::LogTab::System; app.log_detail_open = false; }
             _ => {}
         },
     }
@@ -181,21 +194,27 @@ async fn handle_modal_key(
         return;
     }
 
-    let is_mock_modal   = matches!(app.modal, Some(ModalKind::MockCreate) | Some(ModalKind::MockEdit));
-    let on_port_field   = app.modal_field_idx == PORT_ID_FIELD_IDX;
-    let on_method_field = app.modal_field_idx == METHOD_FIELD_IDX;
-    let on_header_field = app.modal_field_idx == HEADER_FIELD_IDX;
-    let on_select_field = is_mock_modal && (on_port_field || on_method_field);
+    // Clear any previous validation error on each keypress.
+    app.modal_error = None;
+
+    let is_mock_modal      = matches!(app.modal, Some(ModalKind::MockCreate) | Some(ModalKind::MockEdit));
+    let on_port_field      = app.modal_field_idx == PORT_ID_FIELD_IDX;
+    let on_method_field    = app.modal_field_idx == METHOD_FIELD_IDX;
+    let on_header_field    = app.modal_field_idx == HEADER_FIELD_IDX;
+    let on_body_src_field  = app.modal_field_idx == BODY_SOURCE_FIELD_IDX;
+    let on_select_field    = is_mock_modal && (on_port_field || on_method_field || on_body_src_field);
 
     match code {
         KeyCode::Esc if matches!(app.modal, Some(ModalKind::Confirm)) => app.dismiss_modal(),
         KeyCode::Esc => { app.cancel_confirm_pending = true; }
         KeyCode::Tab => app.modal_field_next(),
         KeyCode::BackTab => app.modal_field_prev(),
-        KeyCode::Left if is_mock_modal && on_port_field    => app.cycle_port_field(false),
-        KeyCode::Right if is_mock_modal && on_port_field   => app.cycle_port_field(true),
-        KeyCode::Left if is_mock_modal && on_method_field  => app.cycle_method_field(false),
-        KeyCode::Right if is_mock_modal && on_method_field => app.cycle_method_field(true),
+        KeyCode::Left if is_mock_modal && on_port_field       => app.cycle_port_field(false),
+        KeyCode::Right if is_mock_modal && on_port_field      => app.cycle_port_field(true),
+        KeyCode::Left if is_mock_modal && on_method_field     => app.cycle_method_field(false),
+        KeyCode::Right if is_mock_modal && on_method_field    => app.cycle_method_field(true),
+        KeyCode::Left if is_mock_modal && on_body_src_field   => app.cycle_body_source_field(false),
+        KeyCode::Right if is_mock_modal && on_body_src_field  => app.cycle_body_source_field(true),
         KeyCode::Right if is_mock_modal && on_header_field
             && app.header_autocomplete_suggestion().is_some() => app.accept_header_autocomplete(),
         KeyCode::Left  if !on_select_field => app.modal_cursor_left(),
@@ -205,21 +224,27 @@ async fn handle_modal_key(
         KeyCode::Enter => {
             match app.modal.clone() {
                 Some(ModalKind::PortCreate) => {
-                    let port: u16 = app.modal_fields.get(0).and_then(|s| s.parse().ok()).unwrap_or(8080);
-                    let label = app.modal_fields.get(1).cloned().unwrap_or_default();
-                    match state.port_store.create_port(port, &label).await {
-                        Ok(_) => {
-                            app.status_msg = None;
-                            app.dismiss_modal();
-                            refresh_ports(app).await;
-                        }
-                        Err(_) => {
-                            app.status_msg = Some(format!("Port {} is already in use", port));
+                    if let Some(err) = app.validate_port_modal() {
+                        app.modal_error = Some(err);
+                    } else {
+                        let port: u16 = app.modal_fields.get(0).and_then(|s| s.parse().ok()).unwrap_or(8080);
+                        let label = app.modal_fields.get(1).cloned().unwrap_or_default();
+                        match state.port_store.create_port(port, &label).await {
+                            Ok(_) => {
+                                app.status_msg = None;
+                                app.dismiss_modal();
+                                refresh_ports(app).await;
+                            }
+                            Err(_) => {
+                                app.modal_error = Some(format!("Port {} is already in use", port));
+                            }
                         }
                     }
                 }
                 Some(ModalKind::PortEdit) => {
-                    if let Some(p) = app.selected_port().cloned() {
+                    if let Some(err) = app.validate_port_modal() {
+                        app.modal_error = Some(err);
+                    } else if let Some(p) = app.selected_port().cloned() {
                         let label = app.modal_fields.get(1).cloned().unwrap_or_default();
                         let enabled = p.enabled;
                         if let Ok(_) = state.port_store.update_port(p.id, &label, enabled).await {
@@ -229,7 +254,9 @@ async fn handle_modal_key(
                     }
                 }
                 Some(ModalKind::MockCreate) => {
-                    if let Some(req) = app.build_create_mock() {
+                    if let Some(err) = app.validate_mock_modal() {
+                        app.modal_error = Some(err);
+                    } else if let Some(req) = app.build_create_mock() {
                         if let Ok(m) = state.mock_store.create_mock(req).await {
                             let _ = state.port_manager.restart_port(m.port_id).await;
                             app.dismiss_modal();
@@ -238,7 +265,9 @@ async fn handle_modal_key(
                     }
                 }
                 Some(ModalKind::MockEdit) => {
-                    if let Some(mock_id) = app.selected_mock().map(|m| m.id) {
+                    if let Some(err) = app.validate_mock_modal() {
+                        app.modal_error = Some(err);
+                    } else if let Some(mock_id) = app.selected_mock().map(|m| m.id) {
                         let port_id = app.selected_mock().map(|m| m.port_id).unwrap_or(0);
                         let req = app.build_update_mock();
                         if let Ok(_) = state.mock_store.update_mock(mock_id, req).await {

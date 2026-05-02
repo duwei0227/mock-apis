@@ -77,7 +77,7 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
 
     let is_edit = matches!(app.modal, Some(ModalKind::PortEdit));
     let title = if is_edit { " Edit Port " } else { " New Port " };
-    let labels = ["Port number", "Label"];
+    let labels = ["Port number *", "Label"];
 
     let area = centered_rect(40, 50, f.area());
     f.render_widget(Clear, area);
@@ -123,7 +123,9 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
         f.render_widget(widget, inner[i]);
     }
 
-    let (hint_text, hint_style) = if app.cancel_confirm_pending {
+    let (hint_text, hint_style) = if let Some(err) = &app.modal_error {
+        (err.as_str(), Style::default().fg(Color::Red))
+    } else if app.cancel_confirm_pending {
         ("Discard changes?  Enter: yes  Esc: no", Style::default().fg(Color::Yellow))
     } else {
         ("Tab: next field  Enter: save  Esc: cancel", Style::default().fg(Color::DarkGray))

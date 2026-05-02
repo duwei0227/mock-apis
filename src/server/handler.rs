@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
 use axum::body::Body;
-use axum::extract::{Request, State};
+use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum::response::Response;
 use tokio::sync::broadcast;
@@ -22,6 +23,7 @@ pub struct MockHandlerState {
 
 pub async fn mock_fallback(
     State(state): State<MockHandlerState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     req: Request,
 ) -> Response {
     let start = Instant::now();
@@ -31,17 +33,19 @@ pub async fn mock_fallback(
     let path = req.uri().path().to_owned();
     let query_string = req.uri().query().map(|q| q.to_owned());
 
-    // Collect request headers.
+    // Resolve client IP: honour proxy headers before falling back to socket peer.
     let request_headers: HashMap<String, String> = req
         .headers()
         .iter()
-        .map(|(k, v)| {
-            (
-                k.as_str().to_owned(),
-                v.to_str().unwrap_or("").to_owned(),
-            )
-        })
+        .map(|(k, v)| (k.as_str().to_owned(), v.to_str().unwrap_or("").to_owned()))
         .collect();
+
+    let client_ip = request_headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.split(',').next())
+        .map(|s| s.trim().to_owned())
+        .or_else(|| request_headers.get("x-real-ip").cloned())
+        .unwrap_or_else(|| peer.ip().to_string());
 
     // Read request body.
     let request_body = axum::body::to_bytes(req.into_body(), 1024 * 1024)
@@ -53,28 +57,36 @@ pub async fn mock_fallback(
     // Find matching mock (exact method first, then ANY).
     let matched = find_mock(&state.mocks, &method, &path);
 
-    let (response, mock_id) = if let Some(mock) = matched {
+    let (response, mock_id, resp_body_str, resp_headers_map) = if let Some(mock) = matched {
         if mock.response_delay_ms > 0 {
             tokio::time::sleep(Duration::from_millis(mock.response_delay_ms)).await;
         }
+
+        let body = if let Some(file_path) = mock.response_body.strip_prefix("file://") {
+            match tokio::fs::read_to_string(file_path).await {
+                Ok(contents) => contents,
+                Err(e) => format!("{{\"error\":\"file read failed: {}\"}}", e),
+            }
+        } else {
+            mock.response_body.clone()
+        };
 
         let mut builder =
             Response::builder().status(StatusCode::from_u16(mock.response_status).unwrap_or(StatusCode::OK));
 
         for (k, v) in &mock.response_headers {
-            if let (Ok(name), Ok(value)) = (
-                k.parse::<HeaderName>(),
-                v.parse::<HeaderValue>(),
-            ) {
+            if let (Ok(name), Ok(value)) = (k.parse::<HeaderName>(), v.parse::<HeaderValue>()) {
                 builder = builder.header(name, value);
             }
         }
 
-        let body = mock.response_body.clone();
         let id = mock.id;
+        let resp_headers = mock.response_headers.clone();
         (
-            builder.body(Body::from(body)).unwrap_or_default(),
+            builder.body(Body::from(body.clone())).unwrap_or_default(),
             Some(id),
+            Some(body),
+            resp_headers,
         )
     } else {
         (
@@ -83,6 +95,8 @@ pub async fn mock_fallback(
                 .body(Body::from(r#"{"error":"no mock matched"}"#))
                 .unwrap_or_default(),
             None,
+            Some(r#"{"error":"no mock matched"}"#.to_owned()),
+            HashMap::new(),
         )
     };
 
@@ -100,8 +114,10 @@ pub async fn mock_fallback(
         request_headers,
         request_body,
         response_status: resp_status,
-        response_body: None, // body already consumed
+        response_headers: resp_headers_map,
+        response_body: resp_body_str,
         duration_ms,
+        client_ip: Some(client_ip),
         created_at: chrono::Utc::now(),
     };
 

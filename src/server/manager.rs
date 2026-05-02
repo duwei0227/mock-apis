@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -65,7 +66,8 @@ impl LivePortManager {
 
         let app = axum::Router::new()
             .fallback(mock_fallback)
-            .with_state(state);
+            .with_state(state)
+            .into_make_service_with_connect_info::<SocketAddr>();
 
         let handle = tokio::spawn(async move {
             axum::serve(listener, app)
