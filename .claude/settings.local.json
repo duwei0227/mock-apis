@@ -11,7 +11,12 @@
       "Bash(npm run *)",
       "Bash(cargo build *)",
       "Read(//home/duwei/workspace/rust/**)",
-      "Bash(touch src/dashboard/static_files.rs)"
+      "Bash(touch src/dashboard/static_files.rs)",
+      "Bash(sed -n '1,10p' /home/duwei/workspace/rust/mock-apis/src/dashboard/routes/mocks.rs)",
+      "Bash(sed -n '5,10p' /home/duwei/workspace/rust/mock-apis/src/dashboard/mod.rs)",
+      "Bash(sed -n '3,8p' /home/duwei/workspace/rust/mock-apis/src/tui/views/ports.rs)",
+      "Bash(sed -n '19,25p' /home/duwei/workspace/rust/mock-apis/src/tui/mod.rs)",
+      "Bash(sed -n '88,95p' /home/duwei/workspace/rust/mock-apis/src/tui/app.rs)"
     ]
   }
 }

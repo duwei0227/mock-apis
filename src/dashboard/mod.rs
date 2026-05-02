@@ -4,7 +4,7 @@ pub mod ws;
 
 use std::net::UdpSocket;
 
-use axum::routing::{delete, get, patch, post, put};
+use axum::routing::{get, patch, post};
 use axum::Router;
 use tower_http::cors::CorsLayer;
 

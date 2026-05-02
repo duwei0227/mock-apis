@@ -89,7 +89,6 @@ pub struct App {
     // Mocks tab
     pub mocks: Vec<MockApi>,
     pub mock_selected: usize,
-    pub mock_port_filter: Option<i64>,
 
     // Logs tab
     pub log_tab: LogTab,
@@ -131,7 +130,6 @@ impl App {
             port_selected: 0,
             mocks: Vec::new(),
             mock_selected: 0,
-            mock_port_filter: None,
             log_tab: LogTab::Request,
             request_logs: Vec::new(),
             system_logs: Vec::new(),

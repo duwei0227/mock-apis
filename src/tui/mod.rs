@@ -18,7 +18,7 @@ use ratatui::{
 use tokio::sync::mpsc;
 
 use crate::error::Result;
-use crate::traits::{LogStore, MockStore, PortManager, PortStore};
+use crate::traits::LogQuery;
 use crate::AppState;
 
 use app::{App, ConfirmAction, ModalKind, Tab, BODY_SOURCE_FIELD_IDX, HEADER_FIELD_IDX, METHOD_FIELD_IDX, PORT_ID_FIELD_IDX};
@@ -70,7 +70,7 @@ async fn run_loop(
                 }
             }
             Event::Tick => {}
-            Event::Resize(_, _) => {}
+            Event::Resize => {}
             Event::Key(key) => {
                 use crossterm::event::{KeyCode, KeyModifiers};
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -342,7 +342,6 @@ async fn refresh_mocks(app: &mut App) {
 }
 
 async fn load_initial_logs(app: &mut App) {
-    use crate::traits::LogQuery;
     let query = LogQuery { page_size: 100, ..Default::default() };
     if let Ok(page) = app.state.log_store.list_request_logs(query.clone()).await {
         app.request_logs = page.items;

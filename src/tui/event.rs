@@ -9,7 +9,7 @@ use crate::models::LogEvent;
 pub enum Event {
     Key(KeyEvent),
     Paste(String),
-    Resize(u16, u16),  // terminal size change; handled by ratatui automatically
+    Resize,  // terminal size change; handled by ratatui automatically
     Tick,
     Log(LogEvent),
 }
@@ -40,8 +40,8 @@ async fn run_event_loop(
                     Some(Ok(CtEvent::Paste(s))) => {
                         if tx.send(Event::Paste(s)).await.is_err() { break; }
                     }
-                    Some(Ok(CtEvent::Resize(w, h))) => {
-                        if tx.send(Event::Resize(w, h)).await.is_err() { break; }
+                    Some(Ok(CtEvent::Resize(_, _))) => {
+                        if tx.send(Event::Resize).await.is_err() { break; }
                     }
                     None | Some(Err(_)) => break,
                     _ => {}
