@@ -56,10 +56,11 @@ const route = useRoute()
 useRouter()
 
 const navItems = [
-  { label: 'Dashboard', to: '/',      icon: 'pi pi-home' },
-  { label: 'Ports',     to: '/ports', icon: 'pi pi-server' },
-  { label: 'Mocks',     to: '/mocks', icon: 'pi pi-th-large' },
-  { label: 'Logs',      to: '/logs',  icon: 'pi pi-list' },
+  { label: 'Dashboard', to: '/',           icon: 'pi pi-home' },
+  { label: 'Ports',     to: '/ports',      icon: 'pi pi-server' },
+  { label: 'Mocks',     to: '/mocks',      icon: 'pi pi-th-large' },
+  { label: 'Logs',      to: '/logs',       icon: 'pi pi-list' },
+  { label: 'Functions', to: '/functions',  icon: 'pi pi-bolt' },
 ]
 
 function isActive(item: { to: string }) {

@@ -54,17 +54,19 @@ fn format_headers(h: &HashMap<String, String>) -> String {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
-    Ports  = 0,
-    Mocks  = 1,
-    Logs   = 2,
+    Ports     = 0,
+    Mocks     = 1,
+    Logs      = 2,
+    Functions = 3,
 }
 
 impl Tab {
     pub fn next(self) -> Self {
         match self {
-            Tab::Ports => Tab::Mocks,
-            Tab::Mocks => Tab::Logs,
-            Tab::Logs  => Tab::Ports,
+            Tab::Ports     => Tab::Mocks,
+            Tab::Mocks     => Tab::Logs,
+            Tab::Logs      => Tab::Functions,
+            Tab::Functions => Tab::Ports,
         }
     }
 }
@@ -108,6 +110,9 @@ pub struct App {
 
     pub status_msg: Option<String>,
     pub modal_error: Option<String>,
+
+    // Template functions help popup
+    pub show_fn_help: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -142,6 +147,7 @@ impl App {
             confirm_action: None,
             status_msg: None,
             modal_error: None,
+            show_fn_help: false,
         }
     }
 

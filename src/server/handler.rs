@@ -11,6 +11,7 @@ use tokio::sync::broadcast;
 use tokio::time::Duration;
 
 use crate::models::{HttpMethod, LogEvent, MockApi, RequestLog};
+use crate::server::template;
 use crate::traits::LogStore;
 
 #[derive(Clone)]
@@ -62,7 +63,7 @@ pub async fn mock_fallback(
             tokio::time::sleep(Duration::from_millis(mock.response_delay_ms)).await;
         }
 
-        let body = if let Some(file_path) = mock.response_body.strip_prefix("file://") {
+        let raw_body = if let Some(file_path) = mock.response_body.strip_prefix("file://") {
             match tokio::fs::read_to_string(file_path).await {
                 Ok(contents) => contents,
                 Err(e) => format!("{{\"error\":\"file read failed: {}\"}}", e),
@@ -70,6 +71,7 @@ pub async fn mock_fallback(
         } else {
             mock.response_body.clone()
         };
+        let body = template::render(&raw_body);
 
         let mut builder =
             Response::builder().status(StatusCode::from_u16(mock.response_status).unwrap_or(StatusCode::OK));

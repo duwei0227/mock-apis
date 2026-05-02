@@ -1142,6 +1142,7 @@ dependencies = [
  "crossterm",
  "futures",
  "mime_guess",
+ "rand",
  "ratatui",
  "rusqlite",
  "rust-embed",

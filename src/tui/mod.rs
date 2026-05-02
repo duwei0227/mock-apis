@@ -76,10 +76,22 @@ async fn run_loop(
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
                 // Global quit.
-                if (key.code == KeyCode::Char('q') && !app.modal.is_some())
+                if (key.code == KeyCode::Char('q') && !app.modal.is_some() && !app.show_fn_help)
                     || (ctrl && key.code == KeyCode::Char('c'))
                 {
                     break;
+                }
+
+                // Toggle template function help with '?'.
+                if key.code == KeyCode::Char('?') {
+                    app.show_fn_help = !app.show_fn_help;
+                    continue;
+                }
+                if app.show_fn_help {
+                    if key.code == KeyCode::Esc {
+                        app.show_fn_help = false;
+                    }
+                    continue;
                 }
 
                 if app.modal.is_some() {
@@ -104,6 +116,7 @@ async fn handle_normal_key(
             KeyCode::Char('1') => app.active_tab = Tab::Ports,
             KeyCode::Char('2') => app.active_tab = Tab::Mocks,
             KeyCode::Char('3') => app.active_tab = Tab::Logs,
+            KeyCode::Char('4') => app.active_tab = Tab::Functions,
             KeyCode::Tab       => app.active_tab = app.active_tab.next(),
             KeyCode::Down | KeyCode::Char('j') => app.port_list_nav_down(),
             KeyCode::Up   | KeyCode::Char('k') => app.port_list_nav_up(),
@@ -133,6 +146,7 @@ async fn handle_normal_key(
             KeyCode::Char('1') => app.active_tab = Tab::Ports,
             KeyCode::Char('2') => app.active_tab = Tab::Mocks,
             KeyCode::Char('3') => app.active_tab = Tab::Logs,
+            KeyCode::Char('4') => app.active_tab = Tab::Functions,
             KeyCode::Tab       => app.active_tab = app.active_tab.next(),
             KeyCode::Down | KeyCode::Char('j') => app.mock_list_nav_down(),
             KeyCode::Up   | KeyCode::Char('k') => app.mock_list_nav_up(),
@@ -159,6 +173,7 @@ async fn handle_normal_key(
             KeyCode::Char('1') => app.active_tab = Tab::Ports,
             KeyCode::Char('2') => app.active_tab = Tab::Mocks,
             KeyCode::Char('3') => app.active_tab = Tab::Logs,
+            KeyCode::Char('4') => app.active_tab = Tab::Functions,
             KeyCode::Tab       => app.active_tab = app.active_tab.next(),
             KeyCode::Esc       => { app.log_detail_open = false; }
             KeyCode::Enter => {
@@ -172,6 +187,14 @@ async fn handle_normal_key(
             KeyCode::Char('f') => { app.log_follow = !app.log_follow; if app.log_follow { app.log_detail_open = false; } }
             KeyCode::Char('r') => { app.log_tab = crate::tui::app::LogTab::Request; app.log_detail_open = false; }
             KeyCode::Char('s') => { app.log_tab = crate::tui::app::LogTab::System; app.log_detail_open = false; }
+            _ => {}
+        },
+        Tab::Functions => match code {
+            KeyCode::Char('1') => app.active_tab = Tab::Ports,
+            KeyCode::Char('2') => app.active_tab = Tab::Mocks,
+            KeyCode::Char('3') => app.active_tab = Tab::Logs,
+            KeyCode::Char('4') => app.active_tab = Tab::Functions,
+            KeyCode::Tab       => app.active_tab = app.active_tab.next(),
             _ => {}
         },
     }
@@ -341,11 +364,13 @@ fn render(f: &mut ratatui::Frame, app: &App) {
         Line::from(" [1] Ports  "),
         Line::from(" [2] Mocks  "),
         Line::from(" [3] Logs  "),
+        Line::from(" [4] Functions  "),
     ];
     let active = match app.active_tab {
-        Tab::Ports => 0,
-        Tab::Mocks => 1,
-        Tab::Logs  => 2,
+        Tab::Ports     => 0,
+        Tab::Mocks     => 1,
+        Tab::Logs      => 2,
+        Tab::Functions => 3,
     };
     let tabs = Tabs::new(titles)
         .select(active)
@@ -363,9 +388,10 @@ fn render(f: &mut ratatui::Frame, app: &App) {
 
     // ---- tab content ----
     match app.active_tab {
-        Tab::Ports => views::ports::draw(f, app, chunks[1]),
-        Tab::Mocks => views::mocks::draw(f, app, chunks[1]),
-        Tab::Logs  => views::logs::draw(f, app, chunks[1]),
+        Tab::Ports     => views::ports::draw(f, app, chunks[1]),
+        Tab::Mocks     => views::mocks::draw(f, app, chunks[1]),
+        Tab::Logs      => views::logs::draw(f, app, chunks[1]),
+        Tab::Functions => views::functions::draw(f, app, chunks[1]),
     }
 
     // ---- modal overlay ----
@@ -378,6 +404,11 @@ fn render(f: &mut ratatui::Frame, app: &App) {
         }
         Some(ModalKind::Confirm) => draw_confirm(f, app),
         None => {}
+    }
+
+    // ---- template function help overlay ----
+    if app.show_fn_help {
+        views::fn_help::draw(f, app);
     }
 
     // ---- status bar ----
