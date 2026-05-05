@@ -4,7 +4,23 @@ A developer tool for defining HTTP endpoints that return canned responses. Suppo
 
 ## Installation
 
-### Pre-built binaries
+### Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/duwei0227/mock-apis/main/install.sh | bash
+```
+
+Installs to `/usr/local/bin` (if writable) or `~/.local/bin`. After installation, `mock` is available directly in your terminal.
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/duwei0227/mock-apis/main/install.ps1 | iex
+```
+
+Installs to `%USERPROFILE%\.local\bin` and adds it to your user PATH automatically.
+
+### Manual download
 
 Download the latest binary for your platform from the [Releases](../../releases) page.
 
@@ -12,8 +28,6 @@ Download the latest binary for your platform from the [Releases](../../releases)
 |----------|------|
 | Linux (static) | `mock-linux-x86_64.tar.gz` |
 | Windows | `mock-windows-x86_64.zip` |
-
-Extract and run the `mock` (or `mock.exe`) binary directly — no installation required.
 
 ### Build from source
 
