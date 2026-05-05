@@ -18,13 +18,17 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Extract changelog for this version
-        id: changelog
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          # Extract the block between this version header and the next
-          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
-          # Write to file to preserve newlines
-          echo "$NOTES" > release_notes.md
+          python3 - <<'EOF'
+          import re, os
+          tag = os.environ['GITHUB_REF_NAME'].lstrip('v')
+          with open('CHANGELOG.md') as f:
+              content = f.read()
+          m = re.search(r'## \[' + re.escape(tag) + r'\][^\n]*\n(.*?)(?=\n## \[|\Z)', content, re.DOTALL)
+          notes = m.group(1).strip() if m else 'No changelog entry found.'
+          with open('release_notes.md', 'w') as f:
+              f.write(notes)
+          EOF
 
       - name: Create GitHub Release
         id: create
@@ -32,6 +36,7 @@ jobs:
         with:
           name: "mock-apis ${{ github.ref_name }}"
           body_path: release_notes.md
+          generate_release_notes: false
           draft: false
           prerelease: false
 
