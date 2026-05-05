@@ -9,8 +9,35 @@ permissions:
   contents: write
 
 jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create.outputs.upload_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract changelog for this version
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract the block between this version header and the next
+          NOTES=$(awk "/^## \[$VERSION\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
+          # Write to file to preserve newlines
+          echo "$NOTES" > release_notes.md
+
+      - name: Create GitHub Release
+        id: create
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "mock-apis ${{ github.ref_name }}"
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+
   build:
     name: Build ${{ matrix.target }}
+    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -74,7 +101,7 @@ jobs:
           copy target\${{ matrix.target }}\release\${{ matrix.artifact }} .
           Compress-Archive -Path ${{ matrix.artifact }} -DestinationPath ${{ matrix.archive }}
 
-      - name: Upload to release
+      - name: Upload assets to release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.archive }}
