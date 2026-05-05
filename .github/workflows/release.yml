@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
 
 permissions:
   contents: write
@@ -13,32 +13,80 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.create.outputs.upload_url }}
+      release_id: ${{ steps.create.outputs.release_id }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Extract changelog for this version
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Extract changelog
+        id: changelog
         run: |
-          python3 - <<'EOF'
-          import re, os
-          tag = os.environ['GITHUB_REF_NAME'].lstrip('v')
-          with open('CHANGELOG.md') as f:
-              content = f.read()
-          m = re.search(r'## \[' + re.escape(tag) + r'\][^\n]*\n(.*?)(?=\n## \[|\Z)', content, re.DOTALL)
-          notes = m.group(1).strip() if m else 'No changelog entry found.'
-          with open('release_notes.md', 'w') as f:
-              f.write(notes)
-          EOF
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          NOTES=$(sed -n "/^## \[$VERSION\]/,/^## \[/p" CHANGELOG.md | sed '$d' | tail -n +2)
+          if [ -z "$NOTES" ]; then
+            NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+          fi
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Build release body
+        run: |
+          cat > /tmp/release-body.md <<'BODYEOF'
+          ## Download
+
+          | Platform | File | Description |
+          |----------|------|-------------|
+          | Linux (x86_64) | `mock-linux-x86_64.tar.gz` | Static binary, runs on any Linux distro |
+          | Windows (x86_64) | `mock-windows-x86_64.zip` | Windows executable |
+
+          ### Quick start
+
+          **Linux**
+          ```bash
+          tar -xzf mock-linux-x86_64.tar.gz
+          ./mock                    # TUI mode
+          ./mock --dashboard        # Web dashboard at http://localhost:9999
+          ```
+
+          **Windows**
+          ```powershell
+          # Extract the zip, then:
+          .\mock.exe                # TUI mode
+          .\mock.exe --dashboard   # Web dashboard at http://localhost:9999
+          ```
+
+          ## What's Changed
+          BODYEOF
+
+          echo "${{ steps.changelog.outputs.NOTES }}" >> /tmp/release-body.md
+
+          echo "" >> /tmp/release-body.md
+          echo "---" >> /tmp/release-body.md
+          echo "**Full changelog:** [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)" >> /tmp/release-body.md
 
       - name: Create GitHub Release
         id: create
-        uses: softprops/action-gh-release@v2
+        uses: actions/github-script@v7
         with:
-          name: "mock-apis ${{ github.ref_name }}"
-          body_path: release_notes.md
-          generate_release_notes: false
-          draft: false
-          prerelease: false
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('/tmp/release-body.md', 'utf8');
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: context.ref.replace('refs/tags/', ''),
+              name: `mock-apis ${{ github.ref_name }}`,
+              body: body,
+              draft: false,
+              prerelease: false,
+            });
+            core.setOutput('release_id', data.id);
 
   build:
     name: Build ${{ matrix.target }}
@@ -106,7 +154,18 @@ jobs:
           copy target\${{ matrix.target }}\release\${{ matrix.artifact }} .
           Compress-Archive -Path ${{ matrix.artifact }} -DestinationPath ${{ matrix.archive }}
 
-      - name: Upload assets to release
-        uses: softprops/action-gh-release@v2
+      - name: Upload assets
+        uses: actions/github-script@v7
         with:
-          files: ${{ matrix.archive }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const archiveName = '${{ matrix.archive }}';
+            const data = fs.readFileSync(archiveName);
+            await github.rest.repos.uploadReleaseAsset({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: ${{ needs.create-release.outputs.release_id }},
+              name: archiveName,
+              data: data,
+            });
