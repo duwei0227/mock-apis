@@ -130,7 +130,7 @@
             <span class="text-surface-400">Client IP</span>
             <span class="font-mono">{{ detailLog.client_ip ?? '—' }}</span>
             <span class="text-surface-400">Time</span>
-            <span>{{ new Date(detailLog.created_at).toLocaleString() }}</span>
+            <span>{{ formatTime(detailLog.created_at) }}</span>
           </div>
           <p class="text-surface-400 mt-3 mb-1 font-medium">Request Headers</p>
           <div v-if="!hasKeys(detailLog.request_headers)" class="text-surface-300 italic text-xs">none</div>

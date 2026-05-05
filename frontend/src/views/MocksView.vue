@@ -46,9 +46,10 @@
               <ToggleSwitch :modelValue="data.enabled" @update:modelValue="v => mocksStore.toggleEnabled(data.id, v)" />
             </template>
           </Column>
-          <Column header="" style="width:80px">
+          <Column header="" style="width:110px">
             <template #body="{ data }">
               <div class="flex gap-1">
+                <Button icon="pi pi-copy" size="small" text rounded title="Duplicate" @click.stop="duplicateMock(data)" />
                 <Button icon="pi pi-pencil" size="small" text rounded @click.stop="openEdit(data)" />
                 <Button icon="pi pi-trash" severity="danger" size="small" text rounded @click.stop="confirmDelete(data)" />
               </div>
@@ -144,9 +145,29 @@ function confirmDelete(mock: MockApi) {
   })
 }
 
+function duplicateMock(mock: MockApi) {
+  const usedPaths = new Set(
+    mocksStore.mocks
+      .filter(m => m.port_id === mock.port_id && m.method === mock.method)
+      .map(m => m.path)
+  )
+  let path = `${mock.path}-copy`
+  let n = 2
+  while (usedPaths.has(path)) path = `${mock.path}-copy${n++}`
+
+  editingMock.value = {
+    ...mock,
+    id: undefined as unknown as number,
+    name: `${mock.name} (copy)`,
+    path,
+    enabled: false,
+  }
+  dialogVisible.value = true
+}
+
 async function onSave(form: Partial<MockApi>) {
   try {
-    if (editingMock.value) {
+    if (editingMock.value?.id) {
       await mocksStore.updateMock(editingMock.value.id, form)
     } else {
       await mocksStore.createMock(form)

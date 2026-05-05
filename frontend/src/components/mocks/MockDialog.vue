@@ -120,10 +120,17 @@ const emit = defineEmits<{
 }>()
 
 const visible = ref(props.modelValue)
-watch(() => props.modelValue, v => (visible.value = v))
+watch(() => props.modelValue, v => {
+  visible.value = v
+  if (v) {
+    isEdit.value = !!props.mock?.id
+    form.value = buildForm(props.mock)
+    errors.value = {}
+  }
+})
 watch(visible, v => emit('update:modelValue', v))
 
-const isEdit   = ref(!!props.mock)
+const isEdit   = ref(!!props.mock?.id)
 const saving   = ref(false)
 const methods  = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'ANY']
 const bodySources = ['Inline', 'File']
@@ -165,7 +172,7 @@ function buildForm(mock?: MockApi) {
 const form = ref(buildForm(props.mock))
 
 watch(() => props.mock, m => {
-  isEdit.value = !!m
+  isEdit.value = !!m?.id
   form.value = buildForm(m)
   errors.value = {}
 })

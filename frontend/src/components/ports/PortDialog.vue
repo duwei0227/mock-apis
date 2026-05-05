@@ -4,7 +4,6 @@
     :header="isEdit ? 'Edit Port' : 'New Port'"
     :modal="true"
     :style="{ width: '26rem' }"
-    @hide="reset"
   >
     <div class="flex flex-col gap-4 pt-2">
       <div class="flex flex-col gap-1">
@@ -34,6 +33,8 @@ import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import ToggleSwitch from 'primevue/toggleswitch'
 import Button from 'primevue/button'
+import { useToast } from 'primevue/usetoast'
+import { usePortsStore } from '../../stores/ports'
 import type { PortConfig } from '../../api/client'
 
 const props = defineProps<{ modelValue: boolean; port?: PortConfig }>()
@@ -42,25 +43,38 @@ const emit = defineEmits<{
   (e: 'saved'): void
 }>()
 
+const portsStore = usePortsStore()
+const toast = useToast()
+
 const visible = ref(props.modelValue)
-watch(() => props.modelValue, v => (visible.value = v))
+watch(() => props.modelValue, v => {
+  visible.value = v
+  if (v) {
+    isEdit.value = !!props.port
+    form.value = { port: props.port?.port ?? null, label: props.port?.label ?? '', enabled: props.port?.enabled ?? true }
+  }
+})
 watch(visible, v => emit('update:modelValue', v))
 
 const isEdit = ref(!!props.port)
 const saving = ref(false)
-const form = ref({ port: props.port?.port ?? 8080, label: props.port?.label ?? '', enabled: props.port?.enabled ?? true })
-
-watch(() => props.port, p => {
-  isEdit.value = !!p
-  form.value = { port: p?.port ?? 8080, label: p?.label ?? '', enabled: p?.enabled ?? true }
-})
-
-function reset() {
-  form.value = { port: 8080, label: '', enabled: true }
-}
+const form = ref<{ port: number | null; label: string; enabled: boolean }>({ port: null, label: '', enabled: true })
 
 async function save() {
-  emit('saved')
-  visible.value = false
+  if (!form.value.port) return
+  saving.value = true
+  try {
+    if (isEdit.value && props.port) {
+      await portsStore.updatePort(props.port.id, form.value.label, form.value.enabled)
+    } else {
+      await portsStore.createPort(form.value.port, form.value.label)
+    }
+    emit('saved')
+    visible.value = false
+  } catch (e: any) {
+    toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 3000 })
+  } finally {
+    saving.value = false
+  }
 }
 </script>
