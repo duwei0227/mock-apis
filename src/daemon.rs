@@ -5,7 +5,7 @@ use std::time::Duration;
 
 pub fn pid_path(db: &str) -> PathBuf {
     let path = Path::new(db);
-    let stem = path.file_stem().unwrap_or_else(|| OsStr::new("mock-apis"));
+    let stem = path.file_stem().unwrap_or_else(|| OsStr::new("apimock"));
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     dir.join(format!("{}.pid", stem.to_string_lossy()))
 }

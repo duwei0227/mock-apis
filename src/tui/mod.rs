@@ -401,7 +401,7 @@ fn render(f: &mut ratatui::Frame, app: &App) {
         .select(active)
         .block(
             Block::default()
-                .title(" mock-apis  q:quit  ?/F1:functions ")
+                .title(" apimock  q:quit  ?/F1:functions ")
                 .borders(Borders::ALL),
         )
         .highlight_style(

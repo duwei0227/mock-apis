@@ -81,7 +81,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: context.ref.replace('refs/tags/', ''),
-              name: `mock-apis ${{ github.ref_name }}`,
+              name: `apimock ${{ github.ref_name }}`,
               body: body,
               draft: false,
               prerelease: false,

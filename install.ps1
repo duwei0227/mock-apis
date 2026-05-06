@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$Repo    = "duwei0227/mock-apis"
+$Repo    = "duwei0227/apimock"
 $Archive = "mock-windows-x86_64.zip"
 $Binary  = "mock.exe"
 

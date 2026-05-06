@@ -7,7 +7,7 @@ pub struct Cli {
     pub command: Option<Command>,
 
     /// Path to the SQLite database file
-    #[arg(long, default_value = "mock-apis.db", global = true)]
+    #[arg(long, default_value = "apimock.db", global = true)]
     pub db: String,
 
     /// Management port for dashboard/serve mode

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-REPO="duwei0227/mock-apis"
+REPO="duwei0227/apimock"
 BINARY="mock"
 ARCHIVE="mock-linux-x86_64.tar.gz"
 

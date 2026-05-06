@@ -47,7 +47,7 @@
 #### Infrastructure
 - `--dashboard` flag to launch web dashboard instead of TUI
 - `--port` flag to set management port (default: 9999)
-- `--db` flag to set SQLite database path (default: `mock-apis.db`)
+- `--db` flag to set SQLite database path (default: `apimock.db`)
 - Background daemon mode — `mock start` spawns the server as a background process (calls `setsid` on Unix to survive terminal close); `mock stop` terminates it via a PID file; `mock status` reports whether the daemon is running
 - `mock serve` subcommand — runs the server in the foreground (ports + web dashboard) without a TUI; handles `SIGTERM` and `Ctrl+C` for clean shutdown
 - PID file written alongside the database (`<db-stem>.pid`); stale files are cleaned up automatically on next `mock start`

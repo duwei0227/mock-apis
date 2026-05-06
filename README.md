@@ -1,4 +1,4 @@
-# mock-apis
+# apimock
 
 A developer tool for defining HTTP endpoints that return canned responses. Supports a terminal UI (TUI) and a web dashboard, sharing the same backend.
 
@@ -7,7 +7,7 @@ A developer tool for defining HTTP endpoints that return canned responses. Suppo
 ### Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/duwei0227/mock-apis/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/duwei0227/apimock/main/install.sh | bash
 ```
 
 Installs to `/usr/local/bin` (if writable) or `~/.local/bin`. After installation, `mock` is available directly in your terminal.
@@ -15,7 +15,7 @@ Installs to `/usr/local/bin` (if writable) or `~/.local/bin`. After installation
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/duwei0227/mock-apis/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/duwei0227/apimock/main/install.ps1 | iex
 ```
 
 Installs to `%USERPROFILE%\.local\bin` and adds it to your user PATH automatically.
@@ -35,7 +35,7 @@ Prerequisites: Rust (stable), Node.js 20+
 
 ```bash
 git clone <repo-url>
-cd mock-apis
+cd apimock
 cargo build --release
 # Binary: target/release/mock
 ```
@@ -74,7 +74,7 @@ mock serve                        # foreground server (no TUI), useful for scrip
 
 `mock start` spawns the server as a background daemon and prints its PID. The web dashboard is available at `http://localhost:9999`. Use `mock stop` to shut it down cleanly.
 
-A PID file (`mock-apis.pid` by default, alongside the database) tracks the running process. `mock stop` reads this file to find and terminate the daemon.
+A PID file (`apimock.pid` by default, alongside the database) tracks the running process. `mock stop` reads this file to find and terminate the daemon.
 
 ## Concepts
 
@@ -196,10 +196,10 @@ Commands:
 Options:
       --dashboard       Launch the web dashboard instead of the TUI (no subcommand only)
       --port <PORT>     Management port for dashboard/serve mode [default: 9999]
-      --db <DB>         Path to the SQLite database file [default: mock-apis.db]
+      --db <DB>         Path to the SQLite database file [default: apimock.db]
   -h, --help            Print help
 ```
 
 ## Data Storage
 
-All configuration and logs are stored in a SQLite database file (`mock-apis.db` by default). The `.db-shm` and `.db-wal` files alongside it are normal SQLite WAL-mode auxiliary files and can be ignored in version control.
+All configuration and logs are stored in a SQLite database file (`apimock.db` by default). The `.db-shm` and `.db-wal` files alongside it are normal SQLite WAL-mode auxiliary files and can be ignored in version control.
