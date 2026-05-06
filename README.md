@@ -62,6 +62,20 @@ mock --dashboard --port 8888   # custom management port (default: 9999)
 
 Opens a web dashboard at `http://<local-ip>:9999`. The URL is printed on startup.
 
+### Background daemon mode
+
+```bash
+mock start                        # start server in background
+mock start --port 8888            # custom management port
+mock stop                         # stop background server
+mock status                       # check if server is running
+mock serve                        # foreground server (no TUI), useful for scripts
+```
+
+`mock start` spawns the server as a background daemon and prints its PID. The web dashboard is available at `http://localhost:9999`. Use `mock stop` to shut it down cleanly.
+
+A PID file (`mock-apis.pid` by default, alongside the database) tracks the running process. `mock stop` reads this file to find and terminate the daemon.
+
 ## Concepts
 
 ### Ports
@@ -133,7 +147,8 @@ Use `{{function}}` or `{{function:arg}}` placeholders in the **Response Body** f
 |-----|--------|
 | `1` / `2` / `3` / `4` | Switch to Ports / Mocks / Logs / Functions tab |
 | `Tab` | Next tab |
-| `?` | Toggle built-in functions help overlay |
+| `?` | Toggle built-in functions help overlay (outside modals) |
+| `F1` | Toggle built-in functions help overlay (anywhere, including inside modals) |
 | `q` | Quit |
 
 ### Ports tab
@@ -170,11 +185,17 @@ Use `{{function}}` or `{{function:arg}}` placeholders in the **Response Body** f
 ## CLI Reference
 
 ```
-mock [OPTIONS]
+mock [OPTIONS] [COMMAND]
+
+Commands:
+  start   Start the mock server as a background daemon
+  stop    Stop the background mock server
+  status  Show status of the background mock server
+  serve   Run the mock server in the foreground (ports + web dashboard)
 
 Options:
-      --dashboard       Launch the web dashboard instead of the TUI
-      --port <PORT>     Management port for dashboard mode [default: 9999]
+      --dashboard       Launch the web dashboard instead of the TUI (no subcommand only)
+      --port <PORT>     Management port for dashboard/serve mode [default: 9999]
       --db <DB>         Path to the SQLite database file [default: mock-apis.db]
   -h, --help            Print help
 ```

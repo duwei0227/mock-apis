@@ -130,7 +130,9 @@ impl PortManager for LivePortManager {
     async fn start_all_enabled(&self) -> Result<()> {
         let ports = self.port_store.list_ports().await?;
         for p in ports.into_iter().filter(|p| p.enabled) {
-            self.start_port(p.id).await?;
+            if let Err(e) = self.start_port(p.id).await {
+                tracing::warn!("Could not start port {}: {}", p.port, e);
+            }
         }
         Ok(())
     }

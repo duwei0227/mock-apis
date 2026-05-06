@@ -112,12 +112,15 @@ pub struct App {
 
     // Template functions help popup
     pub show_fn_help: bool,
+
+    pub should_quit: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum ConfirmAction {
     DeletePort(i64),
     DeleteMock(i64),
+    Quit,
 }
 
 impl App {
@@ -146,6 +149,7 @@ impl App {
             status_msg: None,
             modal_error: None,
             show_fn_help: false,
+            should_quit: false,
         }
     }
 

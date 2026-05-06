@@ -76,19 +76,37 @@ async fn run_loop(
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
                 // Global quit.
-                if (key.code == KeyCode::Char('q') && !app.modal.is_some() && !app.show_fn_help)
-                    || (ctrl && key.code == KeyCode::Char('c'))
-                {
+                if ctrl && key.code == KeyCode::Char('c') {
                     break;
                 }
+                if key.code == KeyCode::Char('q') && app.modal.is_none() && !app.show_fn_help {
+                    let running: Vec<_> = app.ports.iter()
+                        .filter(|p| app.running_port_ids.contains(&p.id))
+                        .collect();
+                    if running.is_empty() {
+                        break;
+                    }
+                    let names: Vec<String> = running.iter()
+                        .map(|p| if p.label.is_empty() { p.port.to_string() } else { format!("{} ({})", p.port, p.label) })
+                        .collect();
+                    app.confirm_message = format!(
+                        "Running port(s): {} will stop on exit.\nUse 'mock start' to run as background daemon.",
+                        names.join(", ")
+                    );
+                    app.confirm_action = Some(ConfirmAction::Quit);
+                    app.modal = Some(ModalKind::Confirm);
+                    continue;
+                }
 
-                // Toggle template function help with '?'.
-                if key.code == KeyCode::Char('?') {
+                // Toggle template function help: '?' outside modals, F1 anywhere.
+                if (key.code == KeyCode::Char('?') && app.modal.is_none())
+                    || key.code == KeyCode::F(1)
+                {
                     app.show_fn_help = !app.show_fn_help;
                     continue;
                 }
                 if app.show_fn_help {
-                    if key.code == KeyCode::Esc {
+                    if key.code == KeyCode::Esc || key.code == KeyCode::F(1) {
                         app.show_fn_help = false;
                     }
                     continue;
@@ -96,6 +114,9 @@ async fn run_loop(
 
                 if app.modal.is_some() {
                     handle_modal_key(&mut app, key.code, &state).await;
+                    if app.should_quit {
+                        break;
+                    }
                 } else {
                     handle_normal_key(&mut app, key.code, &state).await;
                 }
@@ -133,8 +154,10 @@ async fn handle_normal_key(
                 if let Some(p) = app.selected_port().cloned() {
                     if app.running_port_ids.contains(&p.id) {
                         let _ = state.port_manager.stop_port(p.id).await;
+                        let _ = state.port_store.set_port_enabled(p.id, false).await;
                         app.running_port_ids.retain(|&id| id != p.id);
                     } else {
+                        let _ = state.port_store.set_port_enabled(p.id, true).await;
                         let _ = state.port_manager.start_port(p.id).await;
                         app.running_port_ids.push(p.id);
                     }
@@ -315,6 +338,9 @@ async fn handle_modal_key(
                                 }
                                 refresh_mocks(app).await;
                             }
+                            ConfirmAction::Quit => {
+                                app.should_quit = true;
+                            }
                         }
                     }
                     app.dismiss_modal();
@@ -375,7 +401,7 @@ fn render(f: &mut ratatui::Frame, app: &App) {
         .select(active)
         .block(
             Block::default()
-                .title(" mock-apis  q:quit ")
+                .title(" mock-apis  q:quit  ?/F1:functions ")
                 .borders(Borders::ALL),
         )
         .highlight_style(

@@ -24,11 +24,12 @@
 - `{{uuid}}` — random UUID v4
 
 #### TUI (terminal UI)
-- Ports tab — list, create, edit, delete ports; toggle on/off with Space
+- Ports tab — list, create, edit, delete ports; toggle on/off with Space (persists `enabled` state to database)
 - Mocks tab — list, create, edit, delete, enable/disable mocks; port display
 - Logs tab — request and system log viewer with detail panel; follow mode
 - Functions tab — built-in template function reference table
-- `?` overlay for quick function help from any tab
+- `?` overlay for quick function help from any tab (outside modals); `F1` opens the same overlay from anywhere including inside modals
+- Quit confirmation dialog when ports are running, with suggestion to use `mock start` for persistent background use
 - Port conflict and validation error messages in modals
 - Cursor rendering in modal input fields
 
@@ -47,4 +48,11 @@
 - `--dashboard` flag to launch web dashboard instead of TUI
 - `--port` flag to set management port (default: 9999)
 - `--db` flag to set SQLite database path (default: `mock-apis.db`)
+- Background daemon mode — `mock start` spawns the server as a background process (calls `setsid` on Unix to survive terminal close); `mock stop` terminates it via a PID file; `mock status` reports whether the daemon is running
+- `mock serve` subcommand — runs the server in the foreground (ports + web dashboard) without a TUI; handles `SIGTERM` and `Ctrl+C` for clean shutdown
+- PID file written alongside the database (`<db-stem>.pid`); stale files are cleaned up automatically on next `mock start`
 - GitHub Actions release workflow for Linux (musl static) and Windows binaries
+
+### Fixed
+
+- `start_all_enabled` logs a warning and continues if a port address is already in use, rather than aborting

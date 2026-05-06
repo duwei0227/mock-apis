@@ -78,7 +78,8 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         Span::styled("n", Style::default().fg(Color::Yellow)), Span::raw(": new  "),
         Span::styled("e", Style::default().fg(Color::Yellow)), Span::raw(": edit  "),
         Span::styled("d", Style::default().fg(Color::Red)),    Span::raw(": delete  "),
-        Span::styled("Space", Style::default().fg(Color::Cyan)), Span::raw(": toggle mock on/off "),
+        Span::styled("Space", Style::default().fg(Color::Cyan)), Span::raw(": toggle on/off  "),
+        Span::styled("F1", Style::default().fg(Color::Magenta)), Span::raw(": built-in functions "),
     ]))
     .block(Block::default().borders(Borders::ALL));
     f.render_widget(help, chunks[2]);
