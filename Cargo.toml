@@ -1,21 +1,7 @@
 [package]
-name        = "apimock"
-version     = "0.1.0"
-edition     = "2021"
-description = "Mock API server with a terminal UI and web dashboard — define HTTP endpoints with canned responses for local development"
-license     = "MIT"
-repository  = "https://github.com/duwei0227/apimock"
-homepage    = "https://github.com/duwei0227/apimock"
-readme      = "README.md"
-keywords    = ["mock", "api", "http", "tui", "testing"]
-categories  = ["command-line-utilities", "development-tools", "web-programming"]
-include     = [
-    "src/**/*",
-    "frontend/dist/**/*",
-    "build.rs",
-    "README.md",
-    "LICENSE",
-]
+name    = "apimock"
+version = "0.1.0"
+edition = "2021"
 
 [[bin]]
 name = "mock"
