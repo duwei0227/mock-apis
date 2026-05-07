@@ -162,6 +162,65 @@ pub fn status(db: &str) {
             println!("Mock server is not running (stale PID file).");
             remove_pid(db);
         }
-        Some(pid) => println!("Mock server is running (PID: {}).", pid),
+        Some(pid) => {
+            println!("Mock server is running (PID: {}).", pid);
+            print_running_details(db);
+        }
+    }
+}
+
+fn print_running_details(db: &str) {
+    use rusqlite::{Connection, OpenFlags};
+
+    let Ok(conn) = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY) else {
+        return;
+    };
+
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT id, port, label FROM port_configs WHERE running = 1 ORDER BY port",
+    ) else {
+        return;
+    };
+
+    let ports: Vec<(i64, u16, String)> = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)? as u16, row.get::<_, String>(2)?))
+        })
+        .map(|rows| rows.flatten().collect())
+        .unwrap_or_default();
+
+    if ports.is_empty() {
+        println!("  No ports currently running.");
+        return;
+    }
+
+    println!();
+    for (port_id, port_num, label) in &ports {
+        if label.is_empty() {
+            println!("  ● :{}", port_num);
+        } else {
+            println!("  ● :{}  {}", port_num, label);
+        }
+
+        let Ok(mut mock_stmt) = conn.prepare(
+            "SELECT name, method, path FROM mock_apis WHERE port_id = ?1 AND enabled = 1 ORDER BY path, method",
+        ) else {
+            continue;
+        };
+
+        let mocks: Vec<(String, String, String)> = mock_stmt
+            .query_map([port_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            })
+            .map(|rows| rows.flatten().collect())
+            .unwrap_or_default();
+
+        for (name, method, path) in &mocks {
+            println!("      {:6}  {}  ({})", method, path, name);
+        }
+        if mocks.is_empty() {
+            println!("      (no enabled APIs)");
+        }
+        println!();
     }
 }
