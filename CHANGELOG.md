@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.2.0] - 2026-05-07
+
+### Added
+
+- **`mock restart` subcommand** — stops the running daemon and starts a fresh one,
+  reloading all port and API configuration from the database.
+- **`mock status` detail output** — shows each running port with its label and lists
+  every enabled API route (method, path, name) beneath it.
+- **Live two-way sync between TUI, dashboard, and daemon** — changes made in any UI
+  are reflected in the others in near-real-time via WebSocket `state_changed` events.
+  - `LogEvent` gains a `StateChanged { resource }` variant (`ports` or `mocks`)
+    broadcast after every mutating operation in `LivePortManager` and all dashboard
+    route handlers.
+  - Vue frontend reconnects to WebSocket on app mount (not only in the Logs view)
+    and re-fetches the affected Pinia store on receipt of a `state_changed` event.
+- **Port runtime state in SQLite** — `port_configs` table tracks `running` and
+  `owner_pid` so any process can read accurate port status without a TCP probe
+  (migration `0007_port_runtime_status`).
+- **Daemon-aware TUI** — when a daemon is running the TUI delegates start, stop, and
+  restart operations to the daemon's HTTP API instead of trying to bind ports locally.
+- **`POST /api/v1/ports/:id/restart`** — new dashboard API endpoint for restarting a
+  port and reloading its mock snapshot from the database.
+- **Action button labels and tooltips in the web dashboard** — port action buttons now
+  show icon + text label ("Start", "Stop", "Edit", "Delete") with a hover tooltip.
+  PrimeVue `Tooltip` directive registered globally in `main.ts`.
+
+### Fixed
+
+- **Startup conflict** — TUI or dashboard launched alongside a running daemon no longer
+  calls `start_all_enabled`, preventing races for port ownership and duplicate-bind
+  errors (`is_external_daemon_running` guard in `main.rs`).
+- **`mock --dashboard` with daemon running** — instead of crashing with "Address already
+  in use", the command now prints the daemon's existing dashboard URL and attempts to
+  open it in the system browser.
+- **TUI mock operations with daemon running** — enabling/disabling, creating, editing,
+  and deleting mocks now delegate the port restart to the daemon so changes take effect
+  immediately, instead of being silently dropped by the local port manager.
+- **Port delete with daemon running** — the TUI now stops the daemon-owned server before
+  deleting the database record, instead of leaving the port running indefinitely.
+- **WebSocket lifetime regression** — `LogsView` was disconnecting the shared WebSocket
+  on unmount; ownership moved to `App.vue` so the connection survives view navigation.
+- **Standalone TUI stop** — stopping a port in standalone TUI mode now also sets
+  `enabled = false` so the port does not auto-restart on the next launch.
+
+---
+
 ## [0.1.0] - 2026-05-05
 
 ### Added
