@@ -62,19 +62,48 @@ mock --dashboard --port 8888   # custom management port (default: 9999)
 
 Opens a web dashboard at `http://<local-ip>:9999`. The URL is printed on startup.
 
+If a daemon is already running (`mock start`), `mock --dashboard` opens the browser to the daemon's existing dashboard instead of starting a second server.
+
 ### Background daemon mode
 
 ```bash
 mock start                        # start server in background
 mock start --port 8888            # custom management port
 mock stop                         # stop background server
-mock status                       # check if server is running
+mock restart                      # stop + start (reloads all port and API config)
+mock status                       # show daemon status and running ports
 mock serve                        # foreground server (no TUI), useful for scripts
 ```
 
-`mock start` spawns the server as a background daemon and prints its PID. The web dashboard is available at `http://localhost:9999`. Use `mock stop` to shut it down cleanly.
+`mock start` spawns the server as a background daemon and prints its PID. The web dashboard is available at `http://localhost:9999`. Use `mock stop` to shut it down cleanly. Use `mock restart` to reload configuration after changing ports or mocks outside the UI.
+
+`mock status` shows whether the daemon is running and, if it is, lists each active port with its label and all enabled API routes:
+
+```
+Mock server is running (PID: 12345).
+
+  ● :8080  payments-api
+      DELETE  /payments/{id}  (cancel payment)
+      GET     /payments       (list payments)
+      POST    /payments       (create payment)
+
+  ● :3000  auth-service
+      (no enabled APIs)
+```
 
 A PID file (`apimock.pid` by default, alongside the database) tracks the running process. `mock stop` reads this file to find and terminate the daemon.
+
+### Multi-client workflow
+
+Run the daemon once and connect multiple UIs to it simultaneously:
+
+```bash
+mock start          # start daemon (manages ports, serves dashboard on :9999)
+mock                # open TUI — reads state from SQLite, delegates start/stop to daemon
+# open http://localhost:9999 in any browser for the web dashboard
+```
+
+Changes made in the TUI are visible in the browser within one second; changes made in the browser (or via the API) are visible in the TUI within 500 ms. Both UIs share a single SQLite database as the source of truth.
 
 ## Concepts
 
@@ -188,10 +217,11 @@ Use `{{function}}` or `{{function:arg}}` placeholders in the **Response Body** f
 mock [OPTIONS] [COMMAND]
 
 Commands:
-  start   Start the mock server as a background daemon
-  stop    Stop the background mock server
-  status  Show status of the background mock server
-  serve   Run the mock server in the foreground (ports + web dashboard)
+  start    Start the mock server as a background daemon
+  stop     Stop the background mock server
+  restart  Stop then start the daemon (reloads all port and API config)
+  status   Show daemon status, running ports, and enabled API routes
+  serve    Run the mock server in the foreground (ports + web dashboard)
 
 Options:
       --dashboard       Launch the web dashboard instead of the TUI (no subcommand only)
