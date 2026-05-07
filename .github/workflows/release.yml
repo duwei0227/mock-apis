@@ -36,6 +36,9 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Build release body
+        env:
+          NOTES: ${{ steps.changelog.outputs.NOTES }}
+          REPO: ${{ github.repository }}
         run: |
           cat > /tmp/release-body.md <<'BODYEOF'
           ## Download
@@ -64,11 +67,9 @@ jobs:
           ## What's Changed
           BODYEOF
 
-          echo "${{ steps.changelog.outputs.NOTES }}" >> /tmp/release-body.md
+          printf '%s\n' "$NOTES" >> /tmp/release-body.md
 
-          echo "" >> /tmp/release-body.md
-          echo "---" >> /tmp/release-body.md
-          echo "**Full changelog:** [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)" >> /tmp/release-body.md
+          printf '\n---\n**Full changelog:** [CHANGELOG.md](https://github.com/%s/blob/main/CHANGELOG.md)\n' "$REPO" >> /tmp/release-body.md
 
       - name: Create GitHub Release
         id: create
