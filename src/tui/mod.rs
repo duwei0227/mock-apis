@@ -210,7 +210,7 @@ async fn handle_normal_key(
                 if let Some(m) = app.selected_mock().cloned() {
                     let new_state = !m.enabled;
                     let _ = state.mock_store.set_mock_enabled(m.id, new_state).await;
-                    let _ = state.port_manager.restart_port(m.port_id).await;
+                    restart_port_or_delegate(state, m.port_id).await;
                     refresh_mocks(app).await;
                 }
             }
@@ -328,7 +328,7 @@ async fn handle_modal_key(
                         app.modal_error = Some(err);
                     } else if let Some(req) = app.build_create_mock() {
                         if let Ok(m) = state.mock_store.create_mock(req).await {
-                            let _ = state.port_manager.restart_port(m.port_id).await;
+                            restart_port_or_delegate(state, m.port_id).await;
                             app.dismiss_modal();
                             refresh_mocks(app).await;
                         }
@@ -341,7 +341,7 @@ async fn handle_modal_key(
                         let port_id = app.selected_mock().map(|m| m.port_id).unwrap_or(0);
                         let req = app.build_update_mock();
                         if let Ok(_) = state.mock_store.update_mock(mock_id, req).await {
-                            let _ = state.port_manager.restart_port(port_id).await;
+                            restart_port_or_delegate(state, port_id).await;
                             app.dismiss_modal();
                             refresh_mocks(app).await;
                         }
@@ -351,14 +351,14 @@ async fn handle_modal_key(
                     if let Some(action) = app.confirm_action.clone() {
                         match action {
                             ConfirmAction::DeletePort(id) => {
-                                let _ = state.port_manager.stop_port(id).await;
+                                stop_port_or_delegate(state, id).await;
                                 let _ = state.port_store.delete_port(id).await;
                                 refresh_ports(app).await;
                             }
                             ConfirmAction::DeleteMock(id) => {
                                 if let Some(m) = state.mock_store.get_mock(id).await.ok().flatten() {
                                     let _ = state.mock_store.delete_mock(id).await;
-                                    let _ = state.port_manager.restart_port(m.port_id).await;
+                                    restart_port_or_delegate(state, m.port_id).await;
                                 }
                                 refresh_mocks(app).await;
                             }
@@ -400,6 +400,22 @@ async fn is_port_open(port: u16) -> bool {
     .await
     .map(|r| r.is_ok())
     .unwrap_or(false)
+}
+
+/// Restart a port via the daemon HTTP API; falls back to the local port manager if no daemon.
+async fn restart_port_or_delegate(state: &AppState, port_id: i64) {
+    let path = format!("/api/v1/ports/{}/restart", port_id);
+    if !daemon_post(state.management_port, &path).await {
+        let _ = state.port_manager.restart_port(port_id).await;
+    }
+}
+
+/// Stop a port via the daemon HTTP API; falls back to the local port manager if no daemon.
+async fn stop_port_or_delegate(state: &AppState, port_id: i64) {
+    let path = format!("/api/v1/ports/{}/stop", port_id);
+    if !daemon_post(state.management_port, &path).await {
+        let _ = state.port_manager.stop_port(port_id).await;
+    }
 }
 
 /// Fire-and-forget HTTP POST to the daemon management server.

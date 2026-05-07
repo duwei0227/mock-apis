@@ -111,6 +111,19 @@ pub async fn stop_port(
     }
 }
 
+pub async fn restart_port(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> impl IntoResponse {
+    match state.port_manager.restart_port(id).await {
+        Ok(()) => {
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
+            StatusCode::NO_CONTENT.into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
 pub async fn port_status(
     State(state): State<AppState>,
     Path(id): Path<i64>,

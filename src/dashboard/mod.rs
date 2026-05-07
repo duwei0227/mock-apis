@@ -50,6 +50,7 @@ fn build_router(state: AppState) -> Router {
         )
         .route("/ports/:id/start", post(ports::start_port))
         .route("/ports/:id/stop", post(ports::stop_port))
+        .route("/ports/:id/restart", post(ports::restart_port))
         .route("/ports/:id/status", get(ports::port_status))
         // Mocks
         .route("/mocks", get(mocks::list_mocks).post(mocks::create_mock))
