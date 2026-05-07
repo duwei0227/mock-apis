@@ -58,7 +58,9 @@ async fn main() -> anyhow::Result<()> {
         log_store.clone(),
         log_tx.clone(),
     ));
-    port_manager.start_all_enabled().await?;
+    if !daemon::is_external_daemon_running(&cli.db) {
+        port_manager.start_all_enabled().await?;
+    }
 
     let state = AppState {
         mock_store,
@@ -66,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
         log_store,
         port_manager: port_manager.clone(),
         log_tx,
+        management_port: cli.port,
     };
 
     match cli.command {
@@ -88,8 +91,12 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run_serve(state: AppState, port: u16) -> anyhow::Result<()> {
-    let db_url = format!("http://localhost:{}", port);
-    println!("Mock server running. Dashboard: {}", db_url);
+    use tokio_util::sync::CancellationToken;
+
+    let cancel = CancellationToken::new();
+    let recon = tokio::spawn(reconciliation_loop(state.clone(), cancel.clone()));
+
+    println!("Mock server running. Dashboard: http://localhost:{}", port);
     println!("Press Ctrl+C to stop.");
 
     #[cfg(unix)]
@@ -110,7 +117,40 @@ async fn run_serve(state: AppState, port: u16) -> anyhow::Result<()> {
         }
     }
 
+    cancel.cancel();
+    recon.await.ok();
     Ok(())
+}
+
+async fn reconciliation_loop(state: AppState, cancel: tokio_util::sync::CancellationToken) {
+    let our_pid = std::process::id();
+    let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(1));
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            _ = ticker.tick() => {}
+        }
+        let Ok(ports) = state.port_store.list_ports().await else { continue };
+        for p in ports {
+            if p.enabled {
+                match p.owner_pid {
+                    // No owner and not running: new port, start it.
+                    None if !p.running => {
+                        let _ = state.port_manager.start_port(p.id).await;
+                    }
+                    // Stale PID from a crashed process: clear and start.
+                    Some(pid) if !crate::daemon::is_process_alive(pid) => {
+                        let _ = state.port_store.set_port_running(p.id, false, None).await;
+                        let _ = state.port_manager.start_port(p.id).await;
+                    }
+                    // Live owner (running or intentionally stopped): respect their decision.
+                    _ => {}
+                }
+            } else if p.running && p.owner_pid == Some(our_pid) {
+                let _ = state.port_manager.stop_port(p.id).await;
+            }
+        }
+    }
 }
 
 /// Shared application state threaded through every subsystem.
@@ -121,4 +161,6 @@ pub struct AppState {
     pub log_store: Arc<dyn traits::LogStore>,
     pub port_manager: Arc<dyn PortManager>,
     pub log_tx: broadcast::Sender<LogEvent>,
+    /// Management HTTP port (dashboard / API) — used by TUI to delegate to a running daemon.
+    pub management_port: u16,
 }
