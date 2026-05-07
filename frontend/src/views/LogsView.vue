@@ -170,7 +170,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Badge from 'primevue/badge'
@@ -288,6 +288,4 @@ async function onSystemPage(e: { page: number; rows: number }) {
 onMounted(async () => {
   await Promise.all([portsStore.fetchPorts(), mocksStore.fetchMocks(), logsStore.fetchRequestLogs(), logsStore.fetchSystemLogs()])
 })
-
-onUnmounted(() => logsStore.disconnectLive())
 </script>
