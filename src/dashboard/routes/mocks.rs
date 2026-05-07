@@ -5,7 +5,7 @@ use axum::Json;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::models::HttpMethod;
+use crate::models::{HttpMethod, LogEvent, StateResource};
 use crate::traits::{CreateMockRequest, UpdateMockRequest};
 use crate::AppState;
 
@@ -75,8 +75,8 @@ pub async fn create_mock(
     };
     match state.mock_store.create_mock(req).await {
         Ok(m) => {
-            // Restart the port server so the new mock is active.
             let _ = state.port_manager.restart_port(m.port_id).await;
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Mocks });
             (StatusCode::CREATED, Json(m)).into_response()
         }
         Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
@@ -114,6 +114,7 @@ pub async fn update_mock(
     match state.mock_store.update_mock(id, req).await {
         Ok(m) => {
             let _ = state.port_manager.restart_port(m.port_id).await;
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Mocks });
             Json(m).into_response()
         }
         Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
@@ -138,6 +139,7 @@ pub async fn delete_mock(
             if let Some(pid) = port_id {
                 let _ = state.port_manager.restart_port(pid).await;
             }
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Mocks });
             StatusCode::NO_CONTENT.into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -162,6 +164,7 @@ pub async fn set_mock_enabled(
             if let Some(pid) = port_id {
                 let _ = state.port_manager.restart_port(pid).await;
             }
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Mocks });
             StatusCode::NO_CONTENT.into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
