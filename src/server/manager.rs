@@ -7,8 +7,9 @@ use tokio::sync::{broadcast, Mutex};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::daemon::is_process_alive;
 use crate::error::{AppError, Result};
-use crate::models::LogEvent;
+use crate::models::{LogEvent, StateResource};
 use crate::server::handler::{mock_fallback, MockHandlerState};
 use crate::traits::{LogStore, MockStore, PortManager, PortStore};
 
@@ -88,34 +89,52 @@ impl PortManager for LivePortManager {
             return Ok(());
         }
         let handle = self.spawn_server(port_id).await?;
+        let our_pid = std::process::id();
         handles.insert(port_id, handle);
+        drop(handles);
+        let _ = self.port_store.set_port_running(port_id, true, Some(our_pid)).await;
+        let _ = self.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
         Ok(())
     }
 
     async fn stop_port(&self, port_id: i64) -> Result<()> {
-        let mut handles = self.handles.lock().await;
-        if let Some((join, token)) = handles.remove(&port_id) {
+        let handle = {
+            let mut handles = self.handles.lock().await;
+            handles.remove(&port_id)
+        };
+        if let Some((join, token)) = handle {
             token.cancel();
             join.await.ok();
+            // Keep our PID so the reconciliation loop treats this as "intentionally stopped"
+            // and doesn't immediately restart. Stale-PID detection handles cleanup on restart.
+            let our_pid = std::process::id();
+            let _ = self.port_store.set_port_running(port_id, false, Some(our_pid)).await;
+            let _ = self.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
         }
         Ok(())
     }
 
     async fn restart_port(&self, port_id: i64) -> Result<()> {
-        {
+        let handle = {
             let mut handles = self.handles.lock().await;
-            if let Some((join, token)) = handles.remove(&port_id) {
-                token.cancel();
-                join.await.ok();
-            }
+            handles.remove(&port_id)
+        };
+        if let Some((join, token)) = handle {
+            token.cancel();
+            join.await.ok();
+            let our_pid = std::process::id();
+            let _ = self.port_store.set_port_running(port_id, false, Some(our_pid)).await;
         }
         // Re-check enabled state before restarting.
         let config = self.port_store.get_port(port_id).await?;
         if config.map(|c| c.enabled).unwrap_or(false) {
-            let mut handles = self.handles.lock().await;
             let handle = self.spawn_server(port_id).await?;
+            let our_pid = std::process::id();
+            let _ = self.port_store.set_port_running(port_id, true, Some(our_pid)).await;
+            let mut handles = self.handles.lock().await;
             handles.insert(port_id, handle);
         }
+        let _ = self.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
         Ok(())
     }
 
@@ -130,6 +149,15 @@ impl PortManager for LivePortManager {
     async fn start_all_enabled(&self) -> Result<()> {
         let ports = self.port_store.list_ports().await?;
         for p in ports.into_iter().filter(|p| p.enabled) {
+            match p.owner_pid {
+                // Live owner (running or intentionally stopped): leave it alone.
+                Some(pid) if is_process_alive(pid) => continue,
+                // Stale PID: clear so we can claim ownership.
+                Some(_) => {
+                    let _ = self.port_store.set_port_running(p.id, false, None).await;
+                }
+                None => {}
+            }
             if let Err(e) = self.start_port(p.id).await {
                 tracing::warn!("Could not start port {}: {}", p.port, e);
             }
