@@ -162,7 +162,8 @@ async fn handle_normal_key(
                     let our_pid = std::process::id();
                     if app.running_port_ids.contains(&p.id) {
                         if p.owner_pid == Some(our_pid) {
-                            // We own it: stop directly.
+                            // We own it: disable so it won't auto-start on next launch, then stop.
+                            let _ = state.port_store.set_port_enabled(p.id, false).await;
                             let _ = state.port_manager.stop_port(p.id).await;
                         } else if p.running {
                             // Daemon owns it per SQLite: delegate via HTTP.
