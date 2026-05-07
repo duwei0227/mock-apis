@@ -8,6 +8,8 @@ pub struct PortConfig {
     pub port: u16,
     pub label: String,
     pub enabled: bool,
+    pub running: bool,
+    pub owner_pid: Option<u32>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -103,10 +105,18 @@ pub struct SystemLog {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StateResource {
+    Ports,
+    Mocks,
+}
+
 /// Unified log event broadcast over the internal channel and WebSocket.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LogEvent {
     Request(RequestLog),
     System(SystemLog),
+    StateChanged { resource: StateResource },
 }

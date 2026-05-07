@@ -202,6 +202,9 @@ impl App {
                 if self.system_logs.len() > 500 { self.system_logs.truncate(500); }
                 if self.log_follow { self.log_selected = 0; }
             }
+            LogEvent::StateChanged { .. } => {
+                // State change notifications are handled separately; not logged as events
+            }
         }
     }
 
