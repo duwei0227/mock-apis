@@ -46,6 +46,16 @@ pub fn is_process_alive(pid: u32) -> bool {
     }
 }
 
+/// Returns true if a daemon process *other than the current process* owns the PID file.
+/// Prevents TUI/dashboard from calling start_all_enabled when a daemon already manages ports.
+pub fn is_external_daemon_running(db: &str) -> bool {
+    let my_pid = std::process::id();
+    match read_pid(db) {
+        Some(pid) if pid != my_pid => is_process_alive(pid),
+        _ => false,
+    }
+}
+
 pub fn start(db: &str, port: u16) -> anyhow::Result<()> {
     if let Some(pid) = read_pid(db) {
         if is_process_alive(pid) {
