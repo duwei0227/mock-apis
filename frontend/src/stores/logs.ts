@@ -1,6 +1,8 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef } from 'vue'
 import { LogsApi, type RequestLog, type SystemLog, type LogPage } from '../api/client'
+import { usePortsStore } from './ports'
+import { useMocksStore } from './mocks'
 
 export type LogEvent =
   | { type: 'request'; request: RequestLog }
@@ -55,6 +57,15 @@ export const useLogsStore = defineStore('logs', () => {
     ws.onmessage = (ev) => {
       try {
         const payload = JSON.parse(ev.data)
+        if (payload.type === 'state_changed') {
+          if (payload.resource === 'ports') {
+            usePortsStore().fetchPorts()
+          } else if (payload.resource === 'mocks') {
+            const mocksStore = useMocksStore()
+            mocksStore.fetchMocks(mocksStore.selectedPortId ?? undefined)
+          }
+          return
+        }
         if (payload.type === 'request') {
           liveEvents.value.unshift({ type: 'request', request: payload })
         } else if (payload.type === 'system') {
