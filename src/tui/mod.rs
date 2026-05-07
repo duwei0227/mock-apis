@@ -49,6 +49,7 @@ async fn run_loop(
     spawn_event_task(log_rx, ev_tx);
 
     let mut app = App::new(state.clone());
+    let mut tick_count: u32 = 0;
 
     // Initial data load.
     refresh_ports(&mut app).await;
@@ -69,7 +70,12 @@ async fn run_loop(
                     app.modal_paste(&text);
                 }
             }
-            Event::Tick => {}
+            Event::Tick => {
+                tick_count = tick_count.wrapping_add(1);
+                if tick_count % 4 == 0 {
+                    refresh_ports(&mut app).await;
+                }
+            }
             Event::Resize => {}
             Event::Key(key) => {
                 use crossterm::event::{KeyCode, KeyModifiers};
@@ -80,8 +86,9 @@ async fn run_loop(
                     break;
                 }
                 if key.code == KeyCode::Char('q') && app.modal.is_none() && !app.show_fn_help {
+                    let our_pid = std::process::id();
                     let running: Vec<_> = app.ports.iter()
-                        .filter(|p| app.running_port_ids.contains(&p.id))
+                        .filter(|p| p.running && p.owner_pid == Some(our_pid))
                         .collect();
                     if running.is_empty() {
                         break;
@@ -152,15 +159,31 @@ async fn handle_normal_key(
             }
             KeyCode::Char(' ') => {
                 if let Some(p) = app.selected_port().cloned() {
+                    let our_pid = std::process::id();
                     if app.running_port_ids.contains(&p.id) {
-                        let _ = state.port_manager.stop_port(p.id).await;
-                        let _ = state.port_store.set_port_enabled(p.id, false).await;
-                        app.running_port_ids.retain(|&id| id != p.id);
+                        if p.owner_pid == Some(our_pid) {
+                            // We own it: stop directly.
+                            let _ = state.port_manager.stop_port(p.id).await;
+                        } else if p.running {
+                            // Daemon owns it per SQLite: delegate via HTTP.
+                            let path = format!("/api/v1/ports/{}/stop", p.id);
+                            daemon_post(state.management_port, &path).await;
+                        } else {
+                            // TCP-probe only (old daemon without SQLite tracking).
+                            app.status_msg = Some(
+                                "Port is managed by an external process. Run 'mock stop' then 'mock start'.".into(),
+                            );
+                        }
                     } else {
+                        // Mark enabled so daemon/startup will always (re)start it.
                         let _ = state.port_store.set_port_enabled(p.id, true).await;
-                        let _ = state.port_manager.start_port(p.id).await;
-                        app.running_port_ids.push(p.id);
+                        let path = format!("/api/v1/ports/{}/start", p.id);
+                        if !daemon_post(state.management_port, &path).await {
+                            // No daemon running: start locally.
+                            let _ = state.port_manager.start_port(p.id).await;
+                        }
                     }
+                    refresh_ports(app).await;
                 }
             }
             _ => {}
@@ -354,10 +377,50 @@ async fn handle_modal_key(
 
 async fn refresh_ports(app: &mut App) {
     if let Ok(ports) = app.state.port_store.list_ports().await {
+        let mut running_ids = Vec::new();
+        for p in &ports {
+            // Trust SQLite first; fall back to TCP probe for ports not yet tracked
+            // (e.g. daemon binary predating the running-status feature).
+            if p.running || is_port_open(p.port).await {
+                running_ids.push(p.id);
+            }
+        }
+        app.running_port_ids = running_ids;
         app.ports = ports;
-        app.running_port_ids = app.state.port_manager.running_ports().await;
         app.port_selected = app.port_selected.min(app.ports.len().saturating_sub(1));
     }
+}
+
+async fn is_port_open(port: u16) -> bool {
+    tokio::time::timeout(
+        tokio::time::Duration::from_millis(100),
+        tokio::net::TcpStream::connect(std::net::SocketAddr::from(([127, 0, 0, 1], port))),
+    )
+    .await
+    .map(|r| r.is_ok())
+    .unwrap_or(false)
+}
+
+/// Fire-and-forget HTTP POST to the daemon management server.
+/// Returns `true` if the connection was accepted (daemon is running).
+async fn daemon_post(mgmt_port: u16, path: &str) -> bool {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let Ok(mut stream) =
+        tokio::net::TcpStream::connect(format!("127.0.0.1:{}", mgmt_port)).await
+    else {
+        return false;
+    };
+    let req = format!(
+        "POST {} HTTP/1.1\r\nHost: localhost\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        path
+    );
+    if stream.write_all(req.as_bytes()).await.is_err() {
+        return false;
+    }
+    let _ = stream.flush().await;
+    let mut buf = [0u8; 128];
+    let _ = stream.read(&mut buf).await;
+    true
 }
 
 async fn refresh_mocks(app: &mut App) {

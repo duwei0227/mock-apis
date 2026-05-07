@@ -68,6 +68,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         ALTER TABLE request_logs ADD COLUMN client_ip TEXT;
         ALTER TABLE request_logs ADD COLUMN response_headers TEXT NOT NULL DEFAULT '{}';
     "),
+    ("0007_port_runtime_status", "
+        ALTER TABLE port_configs ADD COLUMN running   INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE port_configs ADD COLUMN owner_pid INTEGER;
+    "),
 ];
 
 pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {

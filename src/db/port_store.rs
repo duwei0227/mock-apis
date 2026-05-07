@@ -21,12 +21,15 @@ fn row_to_port(row: &rusqlite::Row<'_>) -> rusqlite::Result<PortConfig> {
     let created_at = DateTime::parse_from_rfc3339(&created_at_str)
         .map(|dt| dt.with_timezone(&chrono::Utc))
         .unwrap_or_default();
+    let owner_pid: Option<i64> = row.get(6)?;
     Ok(PortConfig {
         id: row.get(0)?,
         port: row.get::<_, i64>(1)? as u16,
         label: row.get(2)?,
         enabled: row.get::<_, i64>(3)? != 0,
         created_at,
+        running: row.get::<_, i64>(5)? != 0,
+        owner_pid: owner_pid.map(|p| p as u32),
     })
 }
 
@@ -36,7 +39,7 @@ impl PortStore for SqlitePortStore {
         self.conn
             .call(|conn| {
                 let mut stmt =
-                    conn.prepare("SELECT id, port, label, enabled, created_at FROM port_configs ORDER BY id")?;
+                    conn.prepare("SELECT id, port, label, enabled, created_at, running, owner_pid FROM port_configs ORDER BY id")?;
                 let items = stmt
                     .query_map([], row_to_port)?
                     .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -50,7 +53,7 @@ impl PortStore for SqlitePortStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, port, label, enabled, created_at FROM port_configs WHERE id = ?1",
+                    "SELECT id, port, label, enabled, created_at, running, owner_pid FROM port_configs WHERE id = ?1",
                 )?;
                 let item = stmt
                     .query_map(rusqlite::params![id], row_to_port)?
@@ -67,7 +70,7 @@ impl PortStore for SqlitePortStore {
         self.conn
             .call(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, port, label, enabled, created_at FROM port_configs WHERE port = ?1",
+                    "SELECT id, port, label, enabled, created_at, running, owner_pid FROM port_configs WHERE port = ?1",
                 )?;
                 let item = stmt
                     .query_map(rusqlite::params![port_i64], row_to_port)?
@@ -90,7 +93,7 @@ impl PortStore for SqlitePortStore {
                 )?;
                 let id = conn.last_insert_rowid();
                 let mut stmt = conn.prepare(
-                    "SELECT id, port, label, enabled, created_at FROM port_configs WHERE id = ?1",
+                    "SELECT id, port, label, enabled, created_at, running, owner_pid FROM port_configs WHERE id = ?1",
                 )?;
                 let item = stmt
                     .query_map(rusqlite::params![id], row_to_port)?
@@ -112,7 +115,7 @@ impl PortStore for SqlitePortStore {
                     rusqlite::params![label, enabled_i64, id],
                 )?;
                 let mut stmt = conn.prepare(
-                    "SELECT id, port, label, enabled, created_at FROM port_configs WHERE id = ?1",
+                    "SELECT id, port, label, enabled, created_at, running, owner_pid FROM port_configs WHERE id = ?1",
                 )?;
                 let item = stmt
                     .query_map(rusqlite::params![id], row_to_port)?
@@ -141,6 +144,21 @@ impl PortStore for SqlitePortStore {
                 conn.execute(
                     "UPDATE port_configs SET enabled = ?1 WHERE id = ?2",
                     rusqlite::params![enabled_i64, id],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(AppError::from)
+    }
+
+    async fn set_port_running(&self, id: i64, running: bool, owner_pid: Option<u32>) -> Result<()> {
+        let running_i64 = running as i64;
+        let owner_pid_i64: Option<i64> = owner_pid.map(|p| p as i64);
+        self.conn
+            .call(move |conn| {
+                conn.execute(
+                    "UPDATE port_configs SET running = ?1, owner_pid = ?2 WHERE id = ?3",
+                    rusqlite::params![running_i64, owner_pid_i64, id],
                 )?;
                 Ok(())
             })

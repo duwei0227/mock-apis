@@ -18,6 +18,7 @@ pub trait PortStore: Send + Sync {
     async fn update_port(&self, id: i64, label: &str, enabled: bool) -> Result<PortConfig>;
     async fn delete_port(&self, id: i64) -> Result<()>;
     async fn set_port_enabled(&self, id: i64, enabled: bool) -> Result<()>;
+    async fn set_port_running(&self, id: i64, running: bool, owner_pid: Option<u32>) -> Result<()>;
 }
 
 // ---------------------------------------------------------------------------

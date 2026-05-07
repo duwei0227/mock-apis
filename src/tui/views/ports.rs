@@ -16,12 +16,11 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
 
     let rows: Vec<Row> = app.ports.iter().enumerate().map(|(i, p)| {
         let running = app.running_port_ids.contains(&p.id);
-        let status_style = if running {
-            Style::default().fg(Color::Green)
+        let (status, status_style) = if running {
+            ("● Running", Style::default().fg(Color::Green))
         } else {
-            Style::default().fg(Color::Gray)
+            ("○ Stopped", Style::default().fg(Color::Gray))
         };
-        let status = if running { "● Running" } else { "○ Stopped" };
         let style = if i == app.port_selected {
             Style::default().bg(Color::DarkGray).add_modifier(Modifier::BOLD)
         } else {
