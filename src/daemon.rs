@@ -150,6 +150,11 @@ fn kill_process(pid: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn restart(db: &str, port: u16) -> anyhow::Result<()> {
+    stop(db)?;
+    start(db, port)
+}
+
 pub fn status(db: &str) {
     match read_pid(db) {
         None => println!("Mock server is not running."),

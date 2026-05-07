@@ -33,6 +33,10 @@ async fn main() -> anyhow::Result<()> {
             daemon::stop(&cli.db)?;
             return Ok(());
         }
+        Some(Command::Restart) => {
+            daemon::restart(&cli.db, cli.port)?;
+            return Ok(());
+        }
         Some(Command::Status) => {
             daemon::status(&cli.db);
             return Ok(());

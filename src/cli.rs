@@ -25,6 +25,8 @@ pub enum Command {
     Start,
     /// Stop the background mock server
     Stop,
+    /// Restart the background mock server (stop + start), reloading all port and API config
+    Restart,
     /// Show status of the background mock server
     Status,
     /// Run the mock server in the foreground (ports + web dashboard)
