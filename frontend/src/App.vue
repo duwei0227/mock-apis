@@ -13,8 +13,14 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import Toast from 'primevue/toast'
 import ConfirmDialog from 'primevue/confirmdialog'
 import AppSidebar from './components/layout/AppSidebar.vue'
 import AppTopBar from './components/layout/AppTopBar.vue'
+import { useLogsStore } from './stores/logs'
+
+const logsStore = useLogsStore()
+onMounted(() => logsStore.connectLive())
+onUnmounted(() => logsStore.disconnectLive())
 </script>
