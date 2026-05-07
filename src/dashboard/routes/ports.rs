@@ -5,6 +5,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use crate::AppState;
+use crate::models::{LogEvent, StateResource};
 
 #[derive(Deserialize)]
 pub struct CreatePortBody {
@@ -36,7 +37,10 @@ pub async fn create_port(
 ) -> impl IntoResponse {
     let label = body.label.unwrap_or_default();
     match state.port_store.create_port(body.port, &label).await {
-        Ok(p) => (StatusCode::CREATED, Json(p)).into_response(),
+        Ok(p) => {
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
+            (StatusCode::CREATED, Json(p)).into_response()
+        }
         Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     }
 }
@@ -58,7 +62,10 @@ pub async fn update_port(
     Json(body): Json<UpdatePortBody>,
 ) -> impl IntoResponse {
     match state.port_store.update_port(id, &body.label, body.enabled).await {
-        Ok(p) => Json(p).into_response(),
+        Ok(p) => {
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
+            Json(p).into_response()
+        }
         Err(e) => (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
     }
 }
@@ -70,7 +77,10 @@ pub async fn delete_port(
     // Stop the server first if running.
     let _ = state.port_manager.stop_port(id).await;
     match state.port_store.delete_port(id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -80,7 +90,10 @@ pub async fn start_port(
     Path(id): Path<i64>,
 ) -> impl IntoResponse {
     match state.port_manager.start_port(id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -90,7 +103,10 @@ pub async fn stop_port(
     Path(id): Path<i64>,
 ) -> impl IntoResponse {
     match state.port_manager.stop_port(id).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            let _ = state.log_tx.send(LogEvent::StateChanged { resource: StateResource::Ports });
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
