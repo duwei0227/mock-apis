@@ -21,17 +21,32 @@
           />
         </template>
       </Column>
-      <Column header="Actions" style="width: 200px">
+      <Column header="Actions" style="width: 220px">
         <template #body="{ data }">
           <div class="flex gap-1">
             <Button
-              :icon="portsStore.isRunning(data.id) ? 'pi pi-stop' : 'pi pi-play'"
+              v-tooltip.top="portsStore.isRunning(data.id) ? 'Stop port' : 'Start port'"
+              :icon="portsStore.isRunning(data.id) ? 'pi pi-stop-circle' : 'pi pi-play-circle'"
+              :label="portsStore.isRunning(data.id) ? 'Stop' : 'Start'"
               :severity="portsStore.isRunning(data.id) ? 'warning' : 'success'"
-              size="small" text rounded
+              size="small" text
               @click="toggleRunning(data)"
             />
-            <Button icon="pi pi-pencil" size="small" text rounded @click="openEdit(data)" />
-            <Button icon="pi pi-trash" severity="danger" size="small" text rounded @click="confirmDelete(data)" />
+            <Button
+              v-tooltip.top="'Edit port'"
+              icon="pi pi-pencil"
+              label="Edit"
+              size="small" text
+              @click="openEdit(data)"
+            />
+            <Button
+              v-tooltip.top="'Delete port'"
+              icon="pi pi-trash"
+              label="Delete"
+              severity="danger"
+              size="small" text
+              @click="confirmDelete(data)"
+            />
           </div>
         </template>
       </Column>
