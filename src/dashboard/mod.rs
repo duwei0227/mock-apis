@@ -76,6 +76,7 @@ fn build_router(state: AppState) -> Router {
     let inner = Router::new()
         .nest("/api/v1", api)
         .route("/ws/logs", get(ws::ws_logs))
+        .route("/", get(|| async { static_files::serve_asset("") }))
         .fallback(static_files::static_handler);
 
     Router::new()
