@@ -71,9 +71,10 @@ export const PortsApi = {
   update: (id: number, label: string, enabled: boolean) =>
     http.put<PortConfig>(`/ports/${id}`, { label, enabled }),
   remove: (id: number)                 => http.delete(`/ports/${id}`),
-  start:  (id: number)                 => http.post(`/ports/${id}/start`),
-  stop:   (id: number)                 => http.post(`/ports/${id}/stop`),
-  status: (id: number)                 => http.get<{ running: boolean }>(`/ports/${id}/status`),
+  start:   (id: number)                => http.post(`/ports/${id}/start`),
+  stop:    (id: number)                => http.post(`/ports/${id}/stop`),
+  restart: (id: number)                => http.post(`/ports/${id}/restart`),
+  status:  (id: number)                => http.get<{ running: boolean }>(`/ports/${id}/status`),
 }
 
 // ---------- Mock API ----------
