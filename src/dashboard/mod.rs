@@ -80,7 +80,7 @@ fn build_router(state: AppState) -> Router {
         .fallback(static_files::static_handler);
 
     Router::new()
-        .route("/", get(|| async { Redirect::temporary("/mock/") }))
+        .route("/", get(|| async { Redirect::temporary("/mock") }))
         .nest("/mock", inner)
         .layer(CorsLayer::permissive())
         .with_state(state)
