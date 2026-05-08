@@ -52,7 +52,7 @@ export const useLogsStore = defineStore('logs', () => {
   function connectLive() {
     if (ws) return
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-    ws = new WebSocket(`${proto}://${location.host}/ws/logs`)
+    ws = new WebSocket(`${proto}://${location.host}/mock/ws/logs`)
 
     ws.onmessage = (ev) => {
       try {

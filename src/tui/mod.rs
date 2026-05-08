@@ -167,7 +167,7 @@ async fn handle_normal_key(
                             let _ = state.port_manager.stop_port(p.id).await;
                         } else if p.running {
                             // Daemon owns it per SQLite: delegate via HTTP.
-                            let path = format!("/api/v1/ports/{}/stop", p.id);
+                            let path = format!("/mock/api/v1/ports/{}/stop", p.id);
                             daemon_post(state.management_port, &path).await;
                         } else {
                             // TCP-probe only (old daemon without SQLite tracking).
@@ -178,7 +178,7 @@ async fn handle_normal_key(
                     } else {
                         // Mark enabled so daemon/startup will always (re)start it.
                         let _ = state.port_store.set_port_enabled(p.id, true).await;
-                        let path = format!("/api/v1/ports/{}/start", p.id);
+                        let path = format!("/mock/api/v1/ports/{}/start", p.id);
                         if !daemon_post(state.management_port, &path).await {
                             // No daemon running: start locally.
                             let _ = state.port_manager.start_port(p.id).await;
@@ -404,7 +404,7 @@ async fn is_port_open(port: u16) -> bool {
 
 /// Restart a port via the daemon HTTP API; falls back to the local port manager if no daemon.
 async fn restart_port_or_delegate(state: &AppState, port_id: i64) {
-    let path = format!("/api/v1/ports/{}/restart", port_id);
+    let path = format!("/mock/api/v1/ports/{}/restart", port_id);
     if !daemon_post(state.management_port, &path).await {
         let _ = state.port_manager.restart_port(port_id).await;
     }
@@ -412,7 +412,7 @@ async fn restart_port_or_delegate(state: &AppState, port_id: i64) {
 
 /// Stop a port via the daemon HTTP API; falls back to the local port manager if no daemon.
 async fn stop_port_or_delegate(state: &AppState, port_id: i64) {
-    let path = format!("/api/v1/ports/{}/stop", port_id);
+    let path = format!("/mock/api/v1/ports/{}/stop", port_id);
     if !daemon_post(state.management_port, &path).await {
         let _ = state.port_manager.stop_port(port_id).await;
     }

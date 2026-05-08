@@ -72,10 +72,13 @@ fn build_router(state: AppState) -> Router {
             get(logs::list_system_logs).delete(logs::clear_system_logs),
         );
 
-    Router::new()
+    let inner = Router::new()
         .nest("/api/v1", api)
         .route("/ws/logs", get(ws::ws_logs))
-        .fallback(static_files::static_handler)
+        .fallback(static_files::static_handler);
+
+    Router::new()
+        .nest("/mock", inner)
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

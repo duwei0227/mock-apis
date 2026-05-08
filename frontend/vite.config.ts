@@ -14,8 +14,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:9999',
-      '/ws': { target: 'ws://localhost:9999', ws: true },
+      '/mock/api': 'http://localhost:9999',
+      '/mock/ws': { target: 'ws://localhost:9999', ws: true },
     },
   },
 })
