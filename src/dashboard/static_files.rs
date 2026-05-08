@@ -8,7 +8,7 @@ use rust_embed::RustEmbed;
 pub struct FrontendAssets;
 
 pub async fn static_handler(uri: Uri) -> impl IntoResponse {
-    let path = uri.path().trim_start_matches('/');
+    let path = uri.path().trim_start_matches('/').trim_start_matches("mock/");
     serve_asset(path)
 }
 
