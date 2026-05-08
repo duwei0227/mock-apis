@@ -39,7 +39,7 @@
             >
               <div class="flex items-center gap-2 min-w-0">
                 <span class="font-mono text-sm font-semibold text-primary-600 shrink-0">:{{ p.port }}</span>
-                <span class="text-xs text-surface-400 shrink-0">{{ p.label || 'unnamed' }}</span>
+                <span v-if="p.label" class="text-xs text-surface-400 shrink-0">{{ p.label }}</span>
                 <a
                   :href="`http://${systemIp}:${p.port}`"
                   target="_blank"
