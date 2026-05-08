@@ -89,6 +89,12 @@ export const MocksApi = {
     http.patch(`/mocks/${id}/enabled`, { enabled }),
 }
 
+// ---------- System API ----------
+
+export const SystemApi = {
+  info: () => http.get<{ ip: string }>('/system/info'),
+}
+
 // ---------- Log API ----------
 
 export const LogsApi = {

@@ -6,7 +6,8 @@ use std::net::UdpSocket;
 
 use axum::response::Redirect;
 use axum::routing::{get, patch, post};
-use axum::Router;
+use axum::{Json, Router};
+use serde_json::json;
 use tower_http::cors::CorsLayer;
 
 use crate::error::Result;
@@ -71,7 +72,11 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/logs/system",
             get(logs::list_system_logs).delete(logs::clear_system_logs),
-        );
+        )
+        // System
+        .route("/system/info", get(|| async {
+            Json(json!({ "ip": local_ip().unwrap_or_else(|| "127.0.0.1".to_owned()) }))
+        }));
 
     let inner = Router::new()
         .nest("/api/v1", api)
