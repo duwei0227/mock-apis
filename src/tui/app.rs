@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use ratatui::widgets::TableState;
+
 use crate::models::{LogEvent, MockApi, PortConfig, RequestLog, SystemLog};
 use crate::traits::{CreateMockRequest, UpdateMockRequest};
 use crate::AppState;
@@ -80,6 +82,7 @@ pub enum ModalKind { PortCreate, PortEdit, MockCreate, MockEdit, Confirm }
 pub struct App {
     pub state: AppState,
     pub active_tab: Tab,
+    pub system_ip: String,
 
     // Ports tab
     pub ports: Vec<PortConfig>,
@@ -94,15 +97,17 @@ pub struct App {
     pub log_tab: LogTab,
     pub request_logs: Vec<RequestLog>,
     pub system_logs: Vec<SystemLog>,
-    pub log_follow: bool,
-    pub log_selected: usize,
+    pub request_log_state: TableState,
+    pub system_log_state:  TableState,
     pub log_detail_open: bool,
+    pub log_detail_scroll: usize,
 
     // Modal
     pub modal: Option<ModalKind>,
     pub modal_fields: Vec<String>,
     pub modal_field_idx: usize,
     pub modal_cursor_pos: usize,
+    pub modal_body_scroll: usize,
     pub cancel_confirm_pending: bool,
     pub confirm_message: String,
     pub confirm_action: Option<ConfirmAction>,
@@ -125,9 +130,15 @@ pub enum ConfirmAction {
 
 impl App {
     pub fn new(state: AppState) -> Self {
+        let system_ip = (|| {
+            let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+            socket.connect("8.8.8.8:80").ok()?;
+            Some(socket.local_addr().ok()?.ip().to_string())
+        })().unwrap_or_else(|| "unknown".to_string());
         Self {
             state,
             active_tab: Tab::Ports,
+            system_ip,
             ports: Vec::new(),
             running_port_ids: Vec::new(),
             port_selected: 0,
@@ -136,13 +147,15 @@ impl App {
             log_tab: LogTab::Request,
             request_logs: Vec::new(),
             system_logs: Vec::new(),
-            log_follow: true,
-            log_selected: 0,
+            request_log_state: TableState::default(),
+            system_log_state:  TableState::default(),
             log_detail_open: false,
+            log_detail_scroll: 0,
             modal: None,
             modal_fields: Vec::new(),
             modal_field_idx: 0,
             modal_cursor_pos: 0,
+            modal_body_scroll: 0,
             cancel_confirm_pending: false,
             confirm_message: String::new(),
             confirm_action: None,
@@ -178,16 +191,30 @@ impl App {
     }
 
     pub fn log_nav_down(&mut self) {
-        let len = match self.log_tab {
-            LogTab::Request => self.request_logs.len(),
-            LogTab::System  => self.system_logs.len(),
+        // Down = toward older entries (higher index in newest-first storage).
+        let (len, state) = match self.log_tab {
+            LogTab::Request => (self.request_logs.len(), &mut self.request_log_state),
+            LogTab::System  => (self.system_logs.len(),  &mut self.system_log_state),
         };
-        if len > 0 {
-            self.log_selected = (self.log_selected + 1).min(len - 1);
-        }
+        if len == 0 { return; }
+        let next = state.selected().map(|i| (i + 1).min(len - 1)).unwrap_or(0);
+        state.select(Some(next));
     }
+
     pub fn log_nav_up(&mut self) {
-        self.log_selected = self.log_selected.saturating_sub(1);
+        // Up = toward newer entries (lower index in newest-first storage).
+        let state = match self.log_tab {
+            LogTab::Request => &mut self.request_log_state,
+            LogTab::System  => &mut self.system_log_state,
+        };
+        let prev = state.selected().map(|i| i.saturating_sub(1)).unwrap_or(0);
+        state.select(Some(prev));
+    }
+
+    pub fn snap_to_follow(&mut self) {
+        // Newest-first storage: row 0 is always the newest entry.
+        if !self.request_logs.is_empty() { self.request_log_state.select(Some(0)); }
+        if !self.system_logs.is_empty()  { self.system_log_state.select(Some(0)); }
     }
 
     pub fn push_log_event(&mut self, ev: LogEvent) {
@@ -195,16 +222,14 @@ impl App {
             LogEvent::Request(r) => {
                 self.request_logs.insert(0, r);
                 if self.request_logs.len() > 500 { self.request_logs.truncate(500); }
-                if self.log_follow { self.log_selected = 0; }
+                self.request_log_state.select(Some(0));
             }
             LogEvent::System(s) => {
                 self.system_logs.insert(0, s);
                 if self.system_logs.len() > 500 { self.system_logs.truncate(500); }
-                if self.log_follow { self.log_selected = 0; }
+                self.system_log_state.select(Some(0));
             }
-            LogEvent::StateChanged { .. } => {
-                // State change notifications are handled separately; not logged as events
-            }
+            LogEvent::StateChanged { .. } => {}
         }
     }
 
@@ -412,11 +437,34 @@ impl App {
         }
     }
 
+    pub fn modal_clear_field(&mut self) {
+        if let Some(field) = self.modal_fields.get_mut(self.modal_field_idx) {
+            field.clear();
+        }
+        self.modal_cursor_pos = 0;
+        self.modal_body_scroll = 0;
+    }
+
+    pub fn modal_auto_scroll_body(&mut self) {
+        if self.modal_field_idx != BODY_FIELD_IDX { return; }
+        let field = self.modal_fields.get(self.modal_field_idx).map(|s| s.as_str()).unwrap_or("");
+        let chars: Vec<char> = field.chars().collect();
+        let cur = self.modal_cursor_pos.min(chars.len());
+        let cursor_line = chars[..cur].iter().filter(|&&c| c == '\n').count();
+        const VISIBLE: usize = 10; // body_field_height(12) - 2 border rows
+        if cursor_line < self.modal_body_scroll {
+            self.modal_body_scroll = cursor_line;
+        } else if cursor_line >= self.modal_body_scroll + VISIBLE {
+            self.modal_body_scroll = cursor_line + 1 - VISIBLE;
+        }
+    }
+
     pub fn dismiss_modal(&mut self) {
         self.modal = None;
         self.modal_fields.clear();
         self.modal_field_idx = 0;
         self.modal_cursor_pos = 0;
+        self.modal_body_scroll = 0;
         self.cancel_confirm_pending = false;
         self.modal_error = None;
     }

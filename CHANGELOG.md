@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.3.0] - 2026-05-08
+
+### Added
+
+- **System IP column in TUI Ports tab** — the local machine IP is resolved at startup
+  and shown left of the Port column so you can see the full access address at a glance.
+- **Log clear key in TUI** — press `c` on the Logs tab to clear the active log tab
+  (Requests or System) from both memory and the database.
+- **Scrollable request detail overlay** — when the detail popup is open, `↑`/`↓` scroll
+  through long header lists or large bodies; scroll resets automatically on close.
+- **Body field scroll and clear in TUI modal** — `↑`/`↓` scroll the Response Body field
+  while editing; `Ctrl+U` clears the entire field instantly. The field title shows the
+  current line count. Long lines wrap inside the field.
+- **Live log polling for daemon-owned ports** — the TUI now polls the database every
+  second for new log entries, so request logs appear in real time even when ports are
+  managed by a background daemon (the broadcast channel only works within one process).
+
+### Changed
+
+- **`--dashboard` flag removed** — the web dashboard is always served at
+  `http://localhost:9999` whenever the server is running (`mock start` or `mock serve`).
+  There is no longer a separate flag to switch between TUI and dashboard modes.
+- **TUI Logs tab always follows newest** — the follow-mode toggle (`f`) has been removed.
+  The log view always shows the most recent entry at the top; `↑`/`↓` navigate for
+  detail selection without leaving follow mode.
+- **Port filter labels** — ports without a label now show only the port number (e.g.
+  `8082`) in the Mocks page filter dropdown instead of `8082 — unnamed`.
+
+### Fixed
+
+- **Dark mode splitter gutter** — the white divider line between the mock list and detail
+  panel in the web dashboard is now styled to match the dark surface colour.
+- **Log detail visual hierarchy** — sub-section labels (`Request Headers`, `Request Body`,
+  `Response Headers`, `Response Body`) are now rendered in cyan+bold to clearly separate
+  them from field labels; header keys are highlighted in yellow; empty/none markers are
+  dimmed. Headers are sorted alphabetically.
+
+---
+
 ## [0.2.0] - 2026-05-07
 
 ### Added
@@ -31,9 +70,9 @@
 - **Startup conflict** — TUI or dashboard launched alongside a running daemon no longer
   calls `start_all_enabled`, preventing races for port ownership and duplicate-bind
   errors (`is_external_daemon_running` guard in `main.rs`).
-- **`mock --dashboard` with daemon running** — instead of crashing with "Address already
-  in use", the command now prints the daemon's existing dashboard URL and attempts to
-  open it in the system browser.
+- **Dashboard port conflict with daemon running** — launching a second server instance
+  no longer crashes with "Address already in use"; the guard in `main.rs` detects a
+  running daemon and skips the duplicate bind.
 - **TUI mock operations with daemon running** — enabling/disabling, creating, editing,
   and deleting mocks now delegate the port restart to the daemon so changes take effect
   immediately, instead of being silently dropped by the local port manager.
@@ -91,7 +130,7 @@
 - Pagination for log tables
 
 #### Infrastructure
-- `--dashboard` flag to launch web dashboard instead of TUI
+- Web dashboard always served at `http://localhost:9999` when the server is running
 - `--port` flag to set management port (default: 9999)
 - `--db` flag to set SQLite database path (default: `apimock.db`)
 - Background daemon mode — `mock start` spawns the server as a background process (calls `setsid` on Unix to survive terminal close); `mock stop` terminates it via a PID file; `mock status` reports whether the daemon is running

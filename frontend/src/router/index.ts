@@ -6,7 +6,7 @@ import LogsView from '../views/LogsView.vue'
 import FunctionsView from '../views/FunctionsView.vue'
 
 export default createRouter({
-  history: createWebHistory('/mock/'),
+  history: createWebHistory(),
   routes: [
     { path: '/',           component: DashboardView,  meta: { title: 'Dashboard' } },
     { path: '/ports',      component: PortsView,      meta: { title: 'Ports' } },

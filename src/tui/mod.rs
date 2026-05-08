@@ -21,7 +21,7 @@ use crate::error::Result;
 use crate::traits::LogQuery;
 use crate::AppState;
 
-use app::{App, ConfirmAction, ModalKind, Tab, BODY_SOURCE_FIELD_IDX, HEADER_FIELD_IDX, METHOD_FIELD_IDX, PORT_ID_FIELD_IDX};
+use app::{App, ConfirmAction, ModalKind, Tab, BODY_FIELD_IDX, BODY_SOURCE_FIELD_IDX, HEADER_FIELD_IDX, METHOD_FIELD_IDX, PORT_ID_FIELD_IDX};
 use event::{spawn_event_task, Event};
 
 pub async fn run(state: AppState) -> Result<()> {
@@ -68,12 +68,14 @@ async fn run_loop(
             Event::Paste(text) => {
                 if app.modal.is_some() {
                     app.modal_paste(&text);
+                    app.modal_auto_scroll_body();
                 }
             }
             Event::Tick => {
                 tick_count = tick_count.wrapping_add(1);
                 if tick_count % 4 == 0 {
                     refresh_ports(&mut app).await;
+                    refresh_logs(&mut app).await;
                 }
             }
             Event::Resize => {}
@@ -120,7 +122,7 @@ async fn run_loop(
                 }
 
                 if app.modal.is_some() {
-                    handle_modal_key(&mut app, key.code, &state).await;
+                    handle_modal_key(&mut app, key, &state).await;
                     if app.should_quit {
                         break;
                     }
@@ -167,7 +169,7 @@ async fn handle_normal_key(
                             let _ = state.port_manager.stop_port(p.id).await;
                         } else if p.running {
                             // Daemon owns it per SQLite: delegate via HTTP.
-                            let path = format!("/mock/api/v1/ports/{}/stop", p.id);
+                            let path = format!("/api/v1/ports/{}/stop", p.id);
                             daemon_post(state.management_port, &path).await;
                         } else {
                             // TCP-probe only (old daemon without SQLite tracking).
@@ -178,7 +180,7 @@ async fn handle_normal_key(
                     } else {
                         // Mark enabled so daemon/startup will always (re)start it.
                         let _ = state.port_store.set_port_enabled(p.id, true).await;
-                        let path = format!("/mock/api/v1/ports/{}/start", p.id);
+                        let path = format!("/api/v1/ports/{}/start", p.id);
                         if !daemon_post(state.management_port, &path).await {
                             // No daemon running: start locally.
                             let _ = state.port_manager.start_port(p.id).await;
@@ -222,18 +224,46 @@ async fn handle_normal_key(
             KeyCode::Char('3') => app.active_tab = Tab::Logs,
             KeyCode::Char('4') => app.active_tab = Tab::Functions,
             KeyCode::Tab       => app.active_tab = app.active_tab.next(),
-            KeyCode::Esc       => { app.log_detail_open = false; }
+            KeyCode::Esc => {
+                app.log_detail_open = false;
+                app.log_detail_scroll = 0;
+            }
             KeyCode::Enter => {
                 if app.log_tab == crate::tui::app::LogTab::Request {
-                    app.log_follow = false;
                     app.log_detail_open = !app.log_detail_open;
+                    if !app.log_detail_open { app.log_detail_scroll = 0; }
                 }
             }
-            KeyCode::Down | KeyCode::Char('j') => { app.log_follow = false; app.log_nav_down(); }
-            KeyCode::Up   | KeyCode::Char('k') => { app.log_follow = false; app.log_nav_up(); }
-            KeyCode::Char('f') => { app.log_follow = !app.log_follow; if app.log_follow { app.log_detail_open = false; } }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if app.log_detail_open {
+                    app.log_detail_scroll = app.log_detail_scroll.saturating_add(1);
+                } else {
+                    app.log_nav_down();
+                }
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if app.log_detail_open {
+                    app.log_detail_scroll = app.log_detail_scroll.saturating_sub(1);
+                } else {
+                    app.log_nav_up();
+                }
+            }
             KeyCode::Char('r') => { app.log_tab = crate::tui::app::LogTab::Request; app.log_detail_open = false; }
             KeyCode::Char('s') => { app.log_tab = crate::tui::app::LogTab::System; app.log_detail_open = false; }
+            KeyCode::Char('c') => {
+                match app.log_tab {
+                    crate::tui::app::LogTab::Request => {
+                        let _ = state.log_store.clear_request_logs().await;
+                        app.request_logs.clear();
+                        app.request_log_state.select(None);
+                    }
+                    crate::tui::app::LogTab::System => {
+                        let _ = state.log_store.clear_system_logs().await;
+                        app.system_logs.clear();
+                        app.system_log_state.select(None);
+                    }
+                }
+            }
             _ => {}
         },
         Tab::Functions => match code {
@@ -249,10 +279,12 @@ async fn handle_normal_key(
 
 async fn handle_modal_key(
     app: &mut App,
-    code: crossterm::event::KeyCode,
+    key: crossterm::event::KeyEvent,
     state: &AppState,
 ) {
-    use crossterm::event::KeyCode;
+    use crossterm::event::{KeyCode, KeyModifiers};
+    let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+    let code = key.code;
 
     // If user pressed Esc and we're waiting for their confirmation to discard:
     if app.cancel_confirm_pending {
@@ -277,8 +309,9 @@ async fn handle_modal_key(
     match code {
         KeyCode::Esc if matches!(app.modal, Some(ModalKind::Confirm)) => app.dismiss_modal(),
         KeyCode::Esc => { app.cancel_confirm_pending = true; }
-        KeyCode::Tab => app.modal_field_next(),
-        KeyCode::BackTab => app.modal_field_prev(),
+        KeyCode::Tab    => { app.modal_field_next(); app.modal_body_scroll = 0; }
+        KeyCode::BackTab => { app.modal_field_prev(); app.modal_body_scroll = 0; }
+        KeyCode::Char('u') if ctrl => app.modal_clear_field(),
         KeyCode::Left if is_mock_modal && on_port_field       => app.cycle_port_field(false),
         KeyCode::Right if is_mock_modal && on_port_field      => app.cycle_port_field(true),
         KeyCode::Left if is_mock_modal && on_method_field     => app.cycle_method_field(false),
@@ -287,10 +320,14 @@ async fn handle_modal_key(
         KeyCode::Right if is_mock_modal && on_body_src_field  => app.cycle_body_source_field(true),
         KeyCode::Right if is_mock_modal && on_header_field
             && app.header_autocomplete_suggestion().is_some() => app.accept_header_autocomplete(),
+        KeyCode::Up   if is_mock_modal && app.modal_field_idx == BODY_FIELD_IDX
+            => { app.modal_body_scroll = app.modal_body_scroll.saturating_sub(1); }
+        KeyCode::Down if is_mock_modal && app.modal_field_idx == BODY_FIELD_IDX
+            => { app.modal_body_scroll = app.modal_body_scroll.saturating_add(1); }
         KeyCode::Left  if !on_select_field => app.modal_cursor_left(),
         KeyCode::Right if !on_select_field => app.modal_cursor_right(),
-        KeyCode::Backspace if !on_select_field => app.modal_backspace(),
-        KeyCode::Char(c) if !on_select_field => app.modal_type_char(c),
+        KeyCode::Backspace if !on_select_field => { app.modal_backspace(); app.modal_auto_scroll_body(); }
+        KeyCode::Char(c) if !on_select_field => { app.modal_type_char(c); app.modal_auto_scroll_body(); }
         KeyCode::Enter => {
             match app.modal.clone() {
                 Some(ModalKind::PortCreate) => {
@@ -392,6 +429,35 @@ async fn refresh_ports(app: &mut App) {
     }
 }
 
+async fn refresh_logs(app: &mut App) {
+    use crate::traits::LogQuery;
+    let query = LogQuery { page_size: 200, ..Default::default() };
+
+    if let Ok(page) = app.state.log_store.list_request_logs(query.clone()).await {
+        let latest_id = app.request_logs.first().map(|l| l.id).unwrap_or(0);
+        let new_logs: Vec<_> = page.items.into_iter().filter(|l| l.id > latest_id).collect();
+        if !new_logs.is_empty() {
+            let mut merged = new_logs;
+            merged.extend(app.request_logs.drain(..));
+            merged.truncate(500);
+            app.request_logs = merged;
+            app.request_log_state.select(Some(0));
+        }
+    }
+
+    if let Ok(page) = app.state.log_store.list_system_logs(query).await {
+        let latest_id = app.system_logs.first().map(|l| l.id).unwrap_or(0);
+        let new_logs: Vec<_> = page.items.into_iter().filter(|l| l.id > latest_id).collect();
+        if !new_logs.is_empty() {
+            let mut merged = new_logs;
+            merged.extend(app.system_logs.drain(..));
+            merged.truncate(500);
+            app.system_logs = merged;
+            app.system_log_state.select(Some(0));
+        }
+    }
+}
+
 async fn is_port_open(port: u16) -> bool {
     tokio::time::timeout(
         tokio::time::Duration::from_millis(100),
@@ -404,7 +470,7 @@ async fn is_port_open(port: u16) -> bool {
 
 /// Restart a port via the daemon HTTP API; falls back to the local port manager if no daemon.
 async fn restart_port_or_delegate(state: &AppState, port_id: i64) {
-    let path = format!("/mock/api/v1/ports/{}/restart", port_id);
+    let path = format!("/api/v1/ports/{}/restart", port_id);
     if !daemon_post(state.management_port, &path).await {
         let _ = state.port_manager.restart_port(port_id).await;
     }
@@ -412,7 +478,7 @@ async fn restart_port_or_delegate(state: &AppState, port_id: i64) {
 
 /// Stop a port via the daemon HTTP API; falls back to the local port manager if no daemon.
 async fn stop_port_or_delegate(state: &AppState, port_id: i64) {
-    let path = format!("/mock/api/v1/ports/{}/stop", port_id);
+    let path = format!("/api/v1/ports/{}/stop", port_id);
     if !daemon_post(state.management_port, &path).await {
         let _ = state.port_manager.stop_port(port_id).await;
     }
@@ -450,11 +516,12 @@ async fn refresh_mocks(app: &mut App) {
 async fn load_initial_logs(app: &mut App) {
     let query = LogQuery { page_size: 100, ..Default::default() };
     if let Ok(page) = app.state.log_store.list_request_logs(query.clone()).await {
-        app.request_logs = page.items;
+        app.request_logs = page.items; // DB returns newest-first; matches our storage order
     }
     if let Ok(page) = app.state.log_store.list_system_logs(query).await {
         app.system_logs = page.items;
     }
+    app.snap_to_follow();
 }
 
 fn render(f: &mut ratatui::Frame, app: &App) {

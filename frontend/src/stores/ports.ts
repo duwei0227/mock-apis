@@ -61,13 +61,9 @@ export const usePortsStore = defineStore('ports', () => {
     runningIds.value.delete(id)
   }
 
-  async function restartPort(id: number) {
-    await PortsApi.restart(id)
-  }
-
   function isRunning(id: number) {
     return runningIds.value.has(id)
   }
 
-  return { ports, runningIds, loading, fetchPorts, createPort, updatePort, deletePort, startPort, stopPort, restartPort, isRunning }
+  return { ports, runningIds, loading, fetchPorts, createPort, updatePort, deletePort, startPort, stopPort, isRunning }
 })

@@ -155,26 +155,6 @@ pub fn restart(db: &str, port: u16) -> anyhow::Result<()> {
     start(db, port)
 }
 
-pub fn open_browser(url: &str) {
-    #[cfg(target_os = "linux")]
-    let _ = Command::new("xdg-open")
-        .arg(url)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    #[cfg(target_os = "macos")]
-    let _ = Command::new("open")
-        .arg(url)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    #[cfg(target_os = "windows")]
-    let _ = Command::new("cmd")
-        .args(["/c", "start", url])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-}
 
 pub fn status(db: &str) {
     match read_pid(db) {

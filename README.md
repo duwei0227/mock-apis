@@ -53,16 +53,14 @@ mock --db my-project.db   # custom database file
 
 Launches a terminal UI with tabs for Ports, Mocks, Logs, and Functions.
 
-### Web dashboard mode
+### Web dashboard
+
+The web dashboard is served automatically whenever the backend is running. There is no separate flag — just start the server and open a browser:
 
 ```bash
-mock --dashboard
-mock --dashboard --port 8888   # custom management port (default: 9999)
+mock start                        # start as daemon → http://localhost:9999
+mock serve                        # foreground → http://localhost:9999
 ```
-
-Opens a web dashboard at `http://<local-ip>:9999`. The URL is printed on startup.
-
-If a daemon is already running (`mock start`), `mock --dashboard` opens the browser to the daemon's existing dashboard instead of starting a second server.
 
 ### Background daemon mode
 
@@ -207,9 +205,9 @@ Use `{{function}}` or `{{function:arg}}` placeholders in the **Response Body** f
 | `↑` / `↓` or `k` / `j` | Navigate list |
 | `Enter` | Open / close request detail |
 | `Esc` | Close detail |
-| `f` | Toggle follow mode (auto-scroll to newest) |
 | `r` | Switch to Request logs |
 | `s` | Switch to System logs |
+| `c` | Clear the active log tab (also removes from database) |
 
 ## CLI Reference
 
@@ -224,11 +222,12 @@ Commands:
   serve    Run the mock server in the foreground (ports + web dashboard)
 
 Options:
-      --dashboard       Launch the web dashboard instead of the TUI (no subcommand only)
       --port <PORT>     Management port for dashboard/serve mode [default: 9999]
       --db <DB>         Path to the SQLite database file [default: apimock.db]
   -h, --help            Print help
 ```
+
+Running `mock` with no subcommand launches the TUI. The web dashboard is available at `http://localhost:9999` whenever `mock start` or `mock serve` is running.
 
 ## Data Storage
 

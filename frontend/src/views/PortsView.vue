@@ -21,7 +21,7 @@
           />
         </template>
       </Column>
-      <Column header="Actions" style="width: 300px">
+      <Column header="Actions" style="width: 220px">
         <template #body="{ data }">
           <div class="flex gap-1">
             <Button
@@ -31,15 +31,6 @@
               :severity="portsStore.isRunning(data.id) ? 'warning' : 'success'"
               size="small" text
               @click="toggleRunning(data)"
-            />
-            <Button
-              v-if="portsStore.isRunning(data.id)"
-              v-tooltip.top="'Restart port (reloads mocks)'"
-              icon="pi pi-refresh"
-              label="Restart"
-              severity="secondary"
-              size="small" text
-              @click="restartPort(data)"
             />
             <Button
               v-tooltip.top="'Edit port'"
@@ -107,15 +98,6 @@ async function toggleRunning(port: PortConfig) {
     } else {
       await portsStore.startPort(port.id)
     }
-  } catch (e: any) {
-    toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 3000 })
-  }
-}
-
-async function restartPort(port: PortConfig) {
-  try {
-    await portsStore.restartPort(port.id)
-    toast.add({ severity: 'success', summary: 'Restarted', life: 2000 })
   } catch (e: any) {
     toast.add({ severity: 'error', summary: 'Error', detail: e.message, life: 3000 })
   }

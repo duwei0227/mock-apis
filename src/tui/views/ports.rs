@@ -28,6 +28,7 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         };
         Row::new(vec![
             Cell::from(p.id.to_string()),
+            Cell::from(app.system_ip.clone()),
             Cell::from(p.port.to_string()),
             Cell::from(p.label.clone()),
             Cell::from(Span::styled(status, status_style)),
@@ -39,13 +40,14 @@ pub fn draw(f: &mut Frame, app: &App, area: Rect) {
         rows,
         [
             Constraint::Length(4),
+            Constraint::Length(16),
             Constraint::Length(6),
             Constraint::Min(20),
             Constraint::Length(12),
         ],
     )
     .header(
-        Row::new(vec!["ID", "Port", "Label", "Status"])
+        Row::new(vec!["ID", "IP", "Port", "Label", "Status"])
             .style(Style::default().add_modifier(Modifier::BOLD | Modifier::UNDERLINED)),
     )
     .block(Block::default().title(" Ports ").borders(Borders::ALL));

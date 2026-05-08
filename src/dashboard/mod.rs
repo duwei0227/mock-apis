@@ -4,16 +4,14 @@ pub mod ws;
 
 use std::net::UdpSocket;
 
-use axum::response::Redirect;
 use axum::routing::{get, patch, post};
-use axum::{Json, Router};
-use serde_json::json;
+use axum::Router;
 use tower_http::cors::CorsLayer;
 
 use crate::error::Result;
 use crate::AppState;
 
-use routes::{logs, mocks, ports};
+use routes::{info, logs, mocks, ports};
 
 pub async fn run(state: AppState, mgmt_port: u16) -> Result<()> {
     let app = build_router(state);
@@ -42,6 +40,8 @@ fn local_ip() -> Option<String> {
 
 fn build_router(state: AppState) -> Router {
     let api = Router::new()
+        // Info
+        .route("/info", get(info::get_info))
         // Ports
         .route("/ports", get(ports::list_ports).post(ports::create_port))
         .route(
@@ -72,21 +72,12 @@ fn build_router(state: AppState) -> Router {
         .route(
             "/logs/system",
             get(logs::list_system_logs).delete(logs::clear_system_logs),
-        )
-        // System
-        .route("/system/info", get(|| async {
-            Json(json!({ "ip": local_ip().unwrap_or_else(|| "127.0.0.1".to_owned()) }))
-        }));
-
-    let inner = Router::new()
-        .nest("/api/v1", api)
-        .route("/ws/logs", get(ws::ws_logs))
-        .route("/", get(|| async { static_files::serve_asset("") }))
-        .fallback(static_files::static_handler);
+        );
 
     Router::new()
-        .route("/", get(|| async { Redirect::temporary("/mock") }))
-        .nest("/mock", inner)
+        .nest("/api/v1", api)
+        .route("/ws/logs", get(ws::ws_logs))
+        .fallback(static_files::static_handler)
         .layer(CorsLayer::permissive())
         .with_state(state)
 }

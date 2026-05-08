@@ -3,7 +3,6 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  base: '/mock/',
   plugins: [
     vue(),
     tailwindcss(),
@@ -14,8 +13,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/mock/api': 'http://localhost:9999',
-      '/mock/ws': { target: 'ws://localhost:9999', ws: true },
+      '/api': 'http://localhost:9999',
+      '/ws': { target: 'ws://localhost:9999', ws: true },
     },
   },
 })

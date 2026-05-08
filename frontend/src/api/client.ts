@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const http = axios.create({ baseURL: '/mock/api/v1' })
+const http = axios.create({ baseURL: '/api/v1' })
 
 // ---------- Types ----------
 
@@ -55,11 +55,21 @@ export interface SystemLog {
   created_at: string
 }
 
+export interface ServerInfo {
+  ip: string
+}
+
 export interface LogPage<T> {
   items: T[]
   total: number
   page: number
   page_size: number
+}
+
+// ---------- Info API ----------
+
+export const InfoApi = {
+  get: () => http.get<ServerInfo>('/info'),
 }
 
 // ---------- Port API ----------
@@ -71,10 +81,9 @@ export const PortsApi = {
   update: (id: number, label: string, enabled: boolean) =>
     http.put<PortConfig>(`/ports/${id}`, { label, enabled }),
   remove: (id: number)                 => http.delete(`/ports/${id}`),
-  start:   (id: number)                => http.post(`/ports/${id}/start`),
-  stop:    (id: number)                => http.post(`/ports/${id}/stop`),
-  restart: (id: number)                => http.post(`/ports/${id}/restart`),
-  status:  (id: number)                => http.get<{ running: boolean }>(`/ports/${id}/status`),
+  start:  (id: number)                 => http.post(`/ports/${id}/start`),
+  stop:   (id: number)                 => http.post(`/ports/${id}/stop`),
+  status: (id: number)                 => http.get<{ running: boolean }>(`/ports/${id}/status`),
 }
 
 // ---------- Mock API ----------
@@ -87,12 +96,6 @@ export const MocksApi = {
   remove: (id: number)                 => http.delete(`/mocks/${id}`),
   setEnabled: (id: number, enabled: boolean) =>
     http.patch(`/mocks/${id}/enabled`, { enabled }),
-}
-
-// ---------- System API ----------
-
-export const SystemApi = {
-  info: () => http.get<{ ip: string }>('/system/info'),
 }
 
 // ---------- Log API ----------

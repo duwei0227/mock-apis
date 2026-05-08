@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "mock", about = "Mock API server — TUI, web dashboard, or background daemon")]
+#[command(name = "mock", about = "Mock API server — TUI or background daemon")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -13,10 +13,6 @@ pub struct Cli {
     /// Management port for dashboard/serve mode
     #[arg(long, default_value = "9999", global = true)]
     pub port: u16,
-
-    /// Launch the web dashboard instead of the TUI (no subcommand only)
-    #[arg(long)]
-    pub dashboard: bool,
 }
 
 #[derive(Subcommand, Debug)]

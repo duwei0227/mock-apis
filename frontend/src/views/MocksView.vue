@@ -102,7 +102,7 @@ const editingMock = ref<MockApi | undefined>()
 const selectedPortId = ref<number | null>(null)
 
 const portOptions = computed(() =>
-  portsStore.ports.map(p => ({ label: `${p.port} — ${p.label || 'unnamed'}`, value: p.id }))
+  portsStore.ports.map(p => ({ label: p.label ? `${p.port} — ${p.label}` : `${p.port}`, value: p.id }))
 )
 
 const portMap = computed(() =>

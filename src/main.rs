@@ -46,15 +46,6 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // When a daemon is already serving the dashboard on the management port, don't try to
-    // bind the same port again — just tell the user where to find it.
-    if cli.dashboard && daemon::is_external_daemon_running(&cli.db) {
-        let url = format!("http://localhost:{}", cli.port);
-        println!("A daemon is already running the dashboard at {}", url);
-        daemon::open_browser(&url);
-        return Ok(());
-    }
-
     // Open DB + run migrations.
     let conn = db::open(&cli.db).await?;
 
@@ -91,11 +82,7 @@ async fn main() -> anyhow::Result<()> {
             run_serve(state, cli.port).await?;
         }
         _ => {
-            if cli.dashboard {
-                dashboard::run(state, cli.port).await?;
-            } else {
-                tui::run(state).await?;
-            }
+            tui::run(state).await?;
         }
     }
 

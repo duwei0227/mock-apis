@@ -2,7 +2,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Wrap},
     Frame,
 };
 
@@ -153,10 +153,15 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
             || i == crate::tui::app::METHOD_FIELD_IDX
             || i == crate::tui::app::BODY_SOURCE_FIELD_IDX;
         // Dynamic label for the body field.
-        let effective_label = if i == crate::tui::app::BODY_FIELD_IDX {
-            if body_source == "File" { "File Path (json/txt) *" } else { "Response Body" }
+        let effective_label: String = if i == crate::tui::app::BODY_FIELD_IDX {
+            if body_source == "File" {
+                "File Path (json/txt) *".to_owned()
+            } else {
+                let lines = raw.chars().filter(|&c| c == '\n').count() + 1;
+                format!("Response Body  [{} lines]  ↑/↓:scroll  Ctrl+U:clear", lines)
+            }
         } else {
-            label
+            label.to_string()
         };
         let is_multiline_body = i == crate::tui::app::BODY_FIELD_IDX && body_source == "Inline";
         let widget = if is_active && !is_select {
@@ -183,7 +188,9 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
                     }
                 }).collect();
                 Paragraph::new(lines)
-                    .block(Block::default().title(effective_label).borders(Borders::ALL).border_style(border_style))
+                    .wrap(Wrap { trim: false })
+                    .scroll((app.modal_body_scroll as u16, 0))
+                    .block(Block::default().title(effective_label.as_str()).borders(Borders::ALL).border_style(border_style))
             } else {
                 let chars: Vec<char> = display.chars().collect();
                 let cur = app.modal_cursor_pos.min(chars.len());
@@ -195,15 +202,17 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
                     Span::styled(cursor_ch.to_string(), Style::default().add_modifier(Modifier::REVERSED)),
                     Span::raw(after),
                 ]))
-                .block(Block::default().title(effective_label).borders(Borders::ALL).border_style(border_style))
+                .block(Block::default().title(effective_label.as_str()).borders(Borders::ALL).border_style(border_style))
             }
         } else if is_multiline_body {
             let lines: Vec<Line> = display.split('\n').map(|l| Line::from(l.to_owned())).collect();
             Paragraph::new(lines)
-                .block(Block::default().title(effective_label).borders(Borders::ALL).border_style(border_style))
+                .wrap(Wrap { trim: false })
+                .scroll((app.modal_body_scroll as u16, 0))
+                .block(Block::default().title(effective_label.as_str()).borders(Borders::ALL).border_style(border_style))
         } else {
             Paragraph::new(Line::from(display))
-                .block(Block::default().title(effective_label).borders(Borders::ALL).border_style(border_style))
+                .block(Block::default().title(effective_label.as_str()).borders(Borders::ALL).border_style(border_style))
         };
         f.render_widget(widget, inner[i]);
     }
@@ -221,6 +230,8 @@ pub fn draw_modal(f: &mut Frame, app: &App) {
         || app.modal_field_idx == crate::tui::app::METHOD_FIELD_IDX
     {
         ("←/→: select  Tab: next  Enter: save  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
+    } else if app.modal_field_idx == crate::tui::app::BODY_FIELD_IDX && body_source == "Inline" {
+        ("↑/↓: scroll  Ctrl+U: clear field  Tab: next  Enter: save  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
     } else if app.modal_field_idx == crate::tui::app::BODY_FIELD_IDX && body_source == "File" {
         ("Enter full file path (e.g. /home/user/data.json)  Tab: next  Enter: save  Esc: cancel".to_owned(), Style::default().fg(Color::DarkGray))
     } else if app.modal_field_idx == crate::tui::app::PATH_FIELD_IDX {

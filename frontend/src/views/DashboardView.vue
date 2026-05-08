@@ -38,22 +38,24 @@
               class="flex items-center justify-between px-3 py-2 rounded-lg bg-surface-50 dark:bg-surface-800"
             >
               <div class="flex items-center gap-2 min-w-0">
-                <span class="font-mono text-sm font-semibold text-primary-600 shrink-0">:{{ p.port }}</span>
-                <span v-if="p.label" class="text-xs text-surface-400 shrink-0">{{ p.label }}</span>
-                <a
-                  :href="`http://${systemIp}:${p.port}`"
-                  target="_blank"
-                  class="font-mono text-xs text-surface-500 hover:text-primary-600 truncate"
-                >http://{{ systemIp }}:{{ p.port }}</a>
-                <Button
-                  v-tooltip.top="'Copy URL'"
-                  icon="pi pi-copy"
-                  size="small" text rounded severity="secondary"
-                  class="shrink-0 !w-6 !h-6"
-                  @click="copyUrl(`http://${systemIp}:${p.port}`)"
-                />
+                <span class="font-mono text-sm font-semibold text-primary-600">:{{ p.port }}</span>
+                <span v-if="p.label" class="text-xs text-surface-400 truncate">{{ p.label }}</span>
               </div>
-              <Tag value="Running" severity="success" icon="pi pi-circle-fill" class="shrink-0" />
+              <div class="flex items-center gap-2 shrink-0">
+                <a
+                  :href="`http://${serverIp}:${p.port}`"
+                  target="_blank"
+                  class="font-mono text-xs text-primary-500 hover:text-primary-700 hover:underline"
+                >{{ serverIp }}:{{ p.port }}</a>
+                <Button
+                  v-tooltip.top="copied === p.id ? 'Copied!' : 'Copy URL'"
+                  :icon="copied === p.id ? 'pi pi-check' : 'pi pi-copy'"
+                  size="small" text rounded
+                  :severity="copied === p.id ? 'success' : 'secondary'"
+                  @click="copyUrl(p)"
+                />
+                <Tag value="Running" severity="success" icon="pi pi-circle-fill" />
+              </div>
             </div>
           </div>
         </template>
@@ -93,20 +95,25 @@
 import { computed, onMounted, ref } from 'vue'
 import Card from 'primevue/card'
 import Badge from 'primevue/badge'
-import Tag from 'primevue/tag'
 import Button from 'primevue/button'
-import { useToast } from 'primevue/usetoast'
+import Tag from 'primevue/tag'
 import { usePortsStore } from '../stores/ports'
 import { useMocksStore } from '../stores/mocks'
 import { useLogsStore } from '../stores/logs'
-import { SystemApi } from '../api/client'
+import { InfoApi, type PortConfig } from '../api/client'
 
 const portsStore = usePortsStore()
 const mocksStore = useMocksStore()
 const logsStore  = useLogsStore()
-const toast      = useToast()
 
-const systemIp = ref('localhost')
+const serverIp = ref('127.0.0.1')
+const copied   = ref<number | null>(null)
+
+function copyUrl(p: PortConfig) {
+  navigator.clipboard.writeText(`http://${serverIp.value}:${p.port}`)
+  copied.value = p.id
+  setTimeout(() => { copied.value = null }, 1500)
+}
 
 const runningPorts = computed(() =>
   portsStore.ports.filter(p => portsStore.isRunning(p.id))
@@ -119,18 +126,15 @@ const stats = computed(() => [
   { label: 'Total Requests',  value: logsStore.requestPage.total,  icon: 'pi pi-list',   bg: 'bg-orange-100 dark:bg-orange-950', iconColor: 'text-orange-500' },
 ])
 
-async function copyUrl(url: string) {
-  await navigator.clipboard.writeText(url)
-  toast.add({ severity: 'success', summary: 'Copied', detail: url, life: 2000 })
-}
-
 onMounted(async () => {
   const [, , , infoRes] = await Promise.allSettled([
     portsStore.fetchPorts(),
     mocksStore.fetchMocks(),
     logsStore.fetchRequestLogs({ page_size: 5 }),
-    SystemApi.info(),
+    InfoApi.get(),
   ])
-  if (infoRes.status === 'fulfilled') systemIp.value = infoRes.value.data.ip
+  if (infoRes.status === 'fulfilled') {
+    serverIp.value = infoRes.value.data.ip
+  }
 })
 </script>
