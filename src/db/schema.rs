@@ -72,6 +72,22 @@ const MIGRATIONS: &[(&str, &str)] = &[
         ALTER TABLE port_configs ADD COLUMN running   INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE port_configs ADD COLUMN owner_pid INTEGER;
     "),
+    ("0008_mock_filter_pagination", "
+        ALTER TABLE mock_apis ADD COLUMN response_filter_enabled INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE mock_apis ADD COLUMN pagination_enabled       INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE mock_apis ADD COLUMN pagination_page_size     INTEGER NOT NULL DEFAULT 10;
+    "),
+    ("0009_mock_request_params", "
+        ALTER TABLE mock_apis ADD COLUMN request_params TEXT NOT NULL DEFAULT '{}';
+    "),
+    ("0010_pagination_params", "
+        ALTER TABLE mock_apis ADD COLUMN pagination_page_param TEXT NOT NULL DEFAULT 'page';
+        ALTER TABLE mock_apis ADD COLUMN pagination_size_param TEXT NOT NULL DEFAULT 'page_size';
+        ALTER TABLE mock_apis ADD COLUMN pagination_data_field TEXT NOT NULL DEFAULT '';
+    "),
+    ("0011_pagination_total_field", "
+        ALTER TABLE mock_apis ADD COLUMN pagination_total_field TEXT NOT NULL DEFAULT '';
+    "),
 ];
 
 pub fn run_migrations(conn: &Connection) -> rusqlite::Result<()> {

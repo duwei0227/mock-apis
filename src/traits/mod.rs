@@ -33,10 +33,17 @@ pub struct CreateMockRequest {
     pub method: HttpMethod,
     pub path: String,
     pub request_schema: Option<serde_json::Value>,
+    pub request_params: HashMap<String, String>,
     pub response_status: u16,
     pub response_headers: HashMap<String, String>,
     pub response_body: String,
     pub response_delay_ms: u64,
+    pub pagination_enabled: bool,
+    pub pagination_page_size: u32,
+    pub pagination_page_param: String,
+    pub pagination_size_param: String,
+    pub pagination_data_field: String,
+    pub pagination_total_field: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -49,8 +56,15 @@ pub struct UpdateMockRequest {
     pub response_status: Option<u16>,
     pub response_headers: Option<HashMap<String, String>>,
     pub response_body: Option<String>,
+    pub request_params: Option<HashMap<String, String>>,
     pub response_delay_ms: Option<u64>,
     pub enabled: Option<bool>,
+    pub pagination_enabled: Option<bool>,
+    pub pagination_page_size: Option<u32>,
+    pub pagination_page_param: Option<String>,
+    pub pagination_size_param: Option<String>,
+    pub pagination_data_field: Option<String>,
+    pub pagination_total_field: Option<String>,
 }
 
 #[async_trait]

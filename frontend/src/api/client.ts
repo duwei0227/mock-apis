@@ -20,11 +20,18 @@ export interface MockApi {
   method: string
   path: string
   request_schema: unknown | null
+  request_params: Record<string, string>
   response_status: number
   response_headers: Record<string, string>
   response_body: string
   response_delay_ms: number
   enabled: boolean
+  pagination_enabled: boolean
+  pagination_page_size: number
+  pagination_page_param: string
+  pagination_size_param: string
+  pagination_data_field: string
+  pagination_total_field: string
   created_at: string
   updated_at: string
 }

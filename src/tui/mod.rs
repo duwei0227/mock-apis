@@ -21,7 +21,7 @@ use crate::error::Result;
 use crate::traits::LogQuery;
 use crate::AppState;
 
-use app::{App, ConfirmAction, ModalKind, Tab, BODY_FIELD_IDX, BODY_SOURCE_FIELD_IDX, HEADER_FIELD_IDX, METHOD_FIELD_IDX, PORT_ID_FIELD_IDX};
+use app::{App, ConfirmAction, ModalKind, Tab, BODY_FIELD_IDX, BODY_SOURCE_FIELD_IDX, HEADER_FIELD_IDX, METHOD_FIELD_IDX, PAGINATION_ENABLED_FIELD_IDX, PORT_ID_FIELD_IDX, REQUEST_PARAMS_FIELD_IDX};
 use event::{spawn_event_task, Event};
 
 pub async fn run(state: AppState) -> Result<()> {
@@ -57,7 +57,7 @@ async fn run_loop(
     load_initial_logs(&mut app).await;
 
     loop {
-        terminal.draw(|f| render(f, &app))?;
+        terminal.draw(|f| render(f, &mut app))?;
 
         let Some(ev) = ev_rx.recv().await else { break };
 
@@ -299,12 +299,13 @@ async fn handle_modal_key(
     // Clear any previous validation error on each keypress.
     app.modal_error = None;
 
-    let is_mock_modal      = matches!(app.modal, Some(ModalKind::MockCreate) | Some(ModalKind::MockEdit));
-    let on_port_field      = app.modal_field_idx == PORT_ID_FIELD_IDX;
-    let on_method_field    = app.modal_field_idx == METHOD_FIELD_IDX;
-    let on_header_field    = app.modal_field_idx == HEADER_FIELD_IDX;
-    let on_body_src_field  = app.modal_field_idx == BODY_SOURCE_FIELD_IDX;
-    let on_select_field    = is_mock_modal && (on_port_field || on_method_field || on_body_src_field);
+    let is_mock_modal        = matches!(app.modal, Some(ModalKind::MockCreate) | Some(ModalKind::MockEdit));
+    let on_port_field        = app.modal_field_idx == PORT_ID_FIELD_IDX;
+    let on_method_field      = app.modal_field_idx == METHOD_FIELD_IDX;
+    let on_header_field      = app.modal_field_idx == HEADER_FIELD_IDX;
+    let on_body_src_field    = app.modal_field_idx == BODY_SOURCE_FIELD_IDX;
+    let on_pagination_field  = app.modal_field_idx == PAGINATION_ENABLED_FIELD_IDX;
+    let on_select_field      = is_mock_modal && (on_port_field || on_method_field || on_body_src_field || on_pagination_field);
 
     match code {
         KeyCode::Esc if matches!(app.modal, Some(ModalKind::Confirm)) => app.dismiss_modal(),
@@ -318,6 +319,8 @@ async fn handle_modal_key(
         KeyCode::Right if is_mock_modal && on_method_field    => app.cycle_method_field(true),
         KeyCode::Left if is_mock_modal && on_body_src_field   => app.cycle_body_source_field(false),
         KeyCode::Right if is_mock_modal && on_body_src_field  => app.cycle_body_source_field(true),
+        KeyCode::Left if is_mock_modal && on_pagination_field  => app.cycle_bool_field(PAGINATION_ENABLED_FIELD_IDX, false),
+        KeyCode::Right if is_mock_modal && on_pagination_field => app.cycle_bool_field(PAGINATION_ENABLED_FIELD_IDX, true),
         KeyCode::Right if is_mock_modal && on_header_field
             && app.header_autocomplete_suggestion().is_some() => app.accept_header_autocomplete(),
         KeyCode::Up   if is_mock_modal && app.modal_field_idx == BODY_FIELD_IDX
@@ -327,6 +330,20 @@ async fn handle_modal_key(
         KeyCode::Left  if !on_select_field => app.modal_cursor_left(),
         KeyCode::Right if !on_select_field => app.modal_cursor_right(),
         KeyCode::Backspace if !on_select_field => { app.modal_backspace(); app.modal_auto_scroll_body(); }
+        KeyCode::Char('+') if is_mock_modal && app.modal_field_idx == REQUEST_PARAMS_FIELD_IDX => {
+            let field = app.modal_fields.get(REQUEST_PARAMS_FIELD_IDX).cloned().unwrap_or_default();
+            let trimmed = field.trim_end().to_owned();
+            let new_val = if trimmed.is_empty() { String::new() } else { format!("{} | ", trimmed) };
+            if let Some(f) = app.modal_fields.get_mut(REQUEST_PARAMS_FIELD_IDX) { *f = new_val; }
+            app.modal_cursor_pos = app.modal_fields.get(REQUEST_PARAMS_FIELD_IDX).map(|s| s.chars().count()).unwrap_or(0);
+        }
+        KeyCode::Char('+') if is_mock_modal && app.modal_field_idx == HEADER_FIELD_IDX => {
+            let field = app.modal_fields.get(HEADER_FIELD_IDX).cloned().unwrap_or_default();
+            let trimmed = field.trim_end().to_owned();
+            let new_val = if trimmed.is_empty() { String::new() } else { format!("{} | ", trimmed) };
+            if let Some(f) = app.modal_fields.get_mut(HEADER_FIELD_IDX) { *f = new_val; }
+            app.modal_cursor_pos = app.modal_fields.get(HEADER_FIELD_IDX).map(|s| s.chars().count()).unwrap_or(0);
+        }
         KeyCode::Char(c) if !on_select_field => { app.modal_type_char(c); app.modal_auto_scroll_body(); }
         KeyCode::Enter => {
             match app.modal.clone() {
@@ -524,7 +541,7 @@ async fn load_initial_logs(app: &mut App) {
     app.snap_to_follow();
 }
 
-fn render(f: &mut ratatui::Frame, app: &App) {
+fn render(f: &mut ratatui::Frame, app: &mut App) {
     let area = f.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)

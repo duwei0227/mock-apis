@@ -31,8 +31,18 @@
           class="h-full"
           @rowSelect="onRowSelect"
         >
-          <Column header="Port" style="width:70px" class="font-mono">
-            <template #body="{ data }">{{ portMap[data.port_id] ?? data.port_id }}</template>
+          <Column header="Address" style="width:180px">
+            <template #body="{ data }">
+              <div class="flex items-center gap-1 font-mono text-sm">
+                <span>{{ serverIp }}:{{ portMap[data.port_id] ?? data.port_id }}</span>
+                <Button
+                  icon="pi pi-copy"
+                  size="small" text rounded
+                  class="p-0 w-5 h-5 text-surface-400 hover:text-primary-500"
+                  @click.stop="copyAddress(data.port_id)"
+                />
+              </div>
+            </template>
           </Column>
           <Column field="name" header="Name" style="min-width:120px" />
           <Column field="path" header="Path" class="font-mono text-sm" />
@@ -89,6 +99,7 @@ import { useMocksStore } from '../stores/mocks'
 import MockDialog from '../components/mocks/MockDialog.vue'
 import MockDetail from '../components/mocks/MockDetail.vue'
 import type { MockApi } from '../api/client'
+import { InfoApi } from '../api/client'
 import { computed } from 'vue'
 
 const portsStore = usePortsStore()
@@ -96,6 +107,7 @@ const mocksStore = useMocksStore()
 const confirm = useConfirm()
 const toast = useToast()
 
+const serverIp = ref('')
 const selected = ref<MockApi | null>(null)
 const dialogVisible = ref(false)
 const editingMock = ref<MockApi | undefined>()
@@ -114,7 +126,11 @@ async function reload() {
 }
 
 onMounted(async () => {
-  await portsStore.fetchPorts()
+  const [, info] = await Promise.allSettled([
+    portsStore.fetchPorts(),
+    InfoApi.get(),
+  ])
+  if (info.status === 'fulfilled') serverIp.value = info.value.data.ip
   await mocksStore.fetchMocks()
 })
 
@@ -163,6 +179,12 @@ function duplicateMock(mock: MockApi) {
     enabled: false,
   }
   dialogVisible.value = true
+}
+
+function copyAddress(portId: number) {
+  const port = portMap.value[portId] ?? portId
+  navigator.clipboard.writeText(`${serverIp.value}:${port}`)
+  toast.add({ severity: 'success', summary: 'Copied', detail: `${serverIp.value}:${port}`, life: 2000 })
 }
 
 async function onSave(form: Partial<MockApi>) {

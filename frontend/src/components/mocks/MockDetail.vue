@@ -10,6 +10,28 @@
       <Badge :value="String(mock.response_status)" :severity="mock.response_status < 400 ? 'success' : 'danger'" />
       <span class="text-surface-400">Delay</span>
       <span>{{ mock.response_delay_ms }} ms</span>
+      <span class="text-surface-400">Pagination</span>
+      <span>
+        <Badge :value="mock.pagination_enabled ? 'On' : 'Off'" :severity="mock.pagination_enabled ? 'success' : 'secondary'" />
+      </span>
+      <template v-if="mock.pagination_enabled">
+        <span class="text-surface-400">Page / Size param</span>
+        <span class="font-mono text-xs">{{ mock.pagination_page_param }} / {{ mock.pagination_size_param }} (default {{ mock.pagination_page_size }})</span>
+        <span class="text-surface-400">Data field</span>
+        <span class="font-mono text-xs">{{ mock.pagination_data_field || '— (top-level array)' }}</span>
+        <span class="text-surface-400">Total field</span>
+        <span class="font-mono text-xs">{{ mock.pagination_total_field || '— (not written)' }}</span>
+      </template>
+    </div>
+    <div>
+      <p class="text-surface-400 mb-1">Request Params</p>
+      <div v-if="Object.keys(mock.request_params).length === 0" class="text-surface-300 italic">none</div>
+      <div v-else class="flex flex-wrap gap-2">
+        <span v-for="(_, k) in mock.request_params" :key="k"
+              class="font-mono text-xs bg-surface-100 dark:bg-surface-800 px-2 py-0.5 rounded text-primary-400">
+          {{ k }}
+        </span>
+      </div>
     </div>
     <div>
       <p class="text-surface-400 mb-1">Response Headers</p>

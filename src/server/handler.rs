@@ -71,7 +71,8 @@ pub async fn mock_fallback(
         } else {
             mock.response_body.clone()
         };
-        let body = template::render(&raw_body);
+        let rendered = template::render(&raw_body);
+        let body = apply_filter_and_pagination(&rendered, mock, &method, query_string.as_deref(), request_body.as_deref());
 
         let mut builder =
             Response::builder().status(StatusCode::from_u16(mock.response_status).unwrap_or(StatusCode::OK));
@@ -136,6 +137,327 @@ pub async fn mock_fallback(
     });
 
     response
+}
+
+fn percent_decode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'+' {
+            result.push(' ');
+            i += 1;
+        } else if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(hex) = std::str::from_utf8(&bytes[i+1..i+3]) {
+                if let Ok(byte) = u8::from_str_radix(hex, 16) {
+                    result.push(byte as char);
+                    i += 3;
+                    continue;
+                }
+            }
+            result.push(bytes[i] as char);
+            i += 1;
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
+
+fn parse_query_params(query_string: Option<&str>) -> HashMap<String, String> {
+    query_string
+        .unwrap_or("")
+        .split('&')
+        .filter(|s| !s.is_empty())
+        .filter_map(|pair| {
+            let mut parts = pair.splitn(2, '=');
+            let k = percent_decode(parts.next()?);
+            let v = percent_decode(parts.next().unwrap_or(""));
+            Some((k, v))
+        })
+        .collect()
+}
+
+/// Extracts top-level scalar fields from a JSON object body as a string map.
+fn extract_body_params(body: Option<&str>) -> HashMap<String, String> {
+    let Some(b) = body else { return HashMap::new() };
+    let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(b) else {
+        return HashMap::new();
+    };
+    map.into_iter()
+        .filter_map(|(k, v)| {
+            let s = match &v {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                _ => return None,
+            };
+            Some((k, s))
+        })
+        .collect()
+}
+
+fn apply_filter_and_pagination(
+    body: &str,
+    mock: &MockApi,
+    method: &HttpMethod,
+    query_string: Option<&str>,
+    req_body: Option<&str>,
+) -> String {
+    let needs_filter = !mock.request_params.is_empty();
+    let needs_pagination = mock.pagination_enabled;
+    if !needs_filter && !needs_pagination {
+        return body.to_owned();
+    }
+
+    let json = match serde_json::from_str::<serde_json::Value>(body) {
+        Ok(v) => v,
+        Err(_) => return body.to_owned(),
+    };
+
+    let query_params = parse_query_params(query_string);
+    let body_params = if *method == HttpMethod::POST {
+        extract_body_params(req_body)
+    } else {
+        HashMap::new()
+    };
+
+    // Query params take priority over body params; only keys defined in mock.request_params are used.
+    let filters: HashMap<String, String> = mock
+        .request_params
+        .keys()
+        .filter_map(|k| {
+            query_params
+                .get(k)
+                .or_else(|| body_params.get(k))
+                .map(|v| (k.clone(), v.clone()))
+        })
+        .collect();
+
+    tracing::debug!(
+        mock_id = mock.id,
+        mock_request_params = ?mock.request_params,
+        query_params = ?query_params,
+        body_params = ?body_params,
+        active_filters = ?filters,
+        "apply_filter: resolved filters"
+    );
+
+    let filtered = if filters.is_empty() {
+        tracing::debug!(mock_id = mock.id, "apply_filter: no active filters, returning body as-is");
+        json
+    } else {
+        tracing::debug!(mock_id = mock.id, active_filters = ?filters, "apply_filter: applying filters");
+        apply_filter_recursive(json, &filters)
+    };
+
+    if !needs_pagination {
+        return serde_json::to_string(&filtered).unwrap_or_else(|_| body.to_owned());
+    }
+
+    let data_field  = mock.pagination_data_field.trim();
+    let total_field = mock.pagination_total_field.trim();
+    let page_param  = mock.pagination_page_param.as_str();
+    let size_param  = mock.pagination_size_param.as_str();
+    let page: usize = query_params.get(page_param).and_then(|s| s.parse::<usize>().ok()).unwrap_or(1).max(1);
+    let page_size: usize = query_params
+        .get(size_param)
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(mock.pagination_page_size as usize)
+        .max(1);
+
+    if data_field.is_empty() {
+        // No data_field configured: paginate a top-level array and wrap in a new envelope.
+        let arr = match filtered {
+            serde_json::Value::Array(a) => a,
+            other => return serde_json::to_string(&other).unwrap_or_else(|_| body.to_owned()),
+        };
+        let total = arr.len();
+        let start = (page - 1) * page_size;
+        let items: Vec<serde_json::Value> = arr.into_iter().skip(start).take(page_size).collect();
+        serde_json::to_string(&serde_json::json!({
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }))
+        .unwrap_or_else(|_| body.to_owned())
+    } else {
+        // data_field configured: find the array, paginate it, and write results back in-place.
+        let arr = match find_array_by_field(&filtered, data_field) {
+            Some(a) => a,
+            None => return serde_json::to_string(&filtered).unwrap_or_else(|_| body.to_owned()),
+        };
+        let total = arr.len();
+        let start = (page - 1) * page_size;
+        let items: Vec<serde_json::Value> = arr.into_iter().skip(start).take(page_size).collect();
+
+        // Replace data array in the original structure.
+        let result = set_json_field(filtered, data_field, &serde_json::Value::Array(items));
+
+        // Write computed total into the total field if configured.
+        let result = if total_field.is_empty() {
+            result
+        } else {
+            set_json_field(result, total_field, &serde_json::json!(total))
+        };
+
+        serde_json::to_string(&result).unwrap_or_else(|_| body.to_owned())
+    }
+}
+
+/// Replace the field at `path` with `new_value`.
+/// Dot-notation paths (e.g. `body.list`) traverse explicitly; plain names do DFS.
+fn set_json_field(json: serde_json::Value, path: &str, new_value: &serde_json::Value) -> serde_json::Value {
+    let (result, _) = set_json_field_inner(json, path, new_value);
+    result
+}
+
+fn set_json_field_inner(
+    json: serde_json::Value,
+    path: &str,
+    new_value: &serde_json::Value,
+) -> (serde_json::Value, bool) {
+    match json {
+        serde_json::Value::Object(mut map) => {
+            if let Some((head, rest)) = path.split_once('.') {
+                // Explicit path: traverse head, recurse with rest.
+                if let Some(child) = map.remove(head) {
+                    let (new_child, found) = set_json_field_inner(child, rest, new_value);
+                    map.insert(head.to_owned(), new_child);
+                    return (serde_json::Value::Object(map), found);
+                }
+                return (serde_json::Value::Object(map), false);
+            }
+            // Plain name: exact match first, then DFS.
+            if map.contains_key(path) {
+                map.insert(path.to_owned(), new_value.clone());
+                return (serde_json::Value::Object(map), true);
+            }
+            let mut found = false;
+            let new_map = map
+                .into_iter()
+                .map(|(k, v)| {
+                    if found {
+                        (k, v)
+                    } else {
+                        let (new_v, f) = set_json_field_inner(v, path, new_value);
+                        if f { found = true; }
+                        (k, new_v)
+                    }
+                })
+                .collect();
+            (serde_json::Value::Object(new_map), found)
+        }
+        other => (other, false),
+    }
+}
+
+/// Find the array at `path`.
+/// Dot-notation paths (e.g. `body.list`) traverse explicitly; plain names do DFS.
+fn find_array_by_field(json: &serde_json::Value, path: &str) -> Option<Vec<serde_json::Value>> {
+    if let Some((head, rest)) = path.split_once('.') {
+        // Explicit path: step into head, recurse with rest.
+        return match json {
+            serde_json::Value::Object(map) => {
+                map.get(head).and_then(|v| find_array_by_field(v, rest))
+            }
+            _ => None,
+        };
+    }
+    // Plain name: DFS search.
+    match json {
+        serde_json::Value::Object(map) => {
+            if let Some(serde_json::Value::Array(arr)) = map.get(path) {
+                return Some(arr.clone());
+            }
+            for v in map.values() {
+                if let Some(found) = find_array_by_field(v, path) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        serde_json::Value::Array(arr) => {
+            for item in arr {
+                if let Some(found) = find_array_by_field(item, path) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Recursively walk the JSON tree and filter arrays of objects by `filters`.
+///
+/// Rules:
+/// - **Array whose items are objects**: filter out items that do not match all filters.
+///   Non-object items within a mixed array are kept as-is.
+/// - **Array of primitives** (strings, numbers, booleans): returned unchanged —
+///   these are config/enum lists and should never be filtered.
+/// - **Object**: recurse into every field value.
+/// - **Scalar**: pass through unchanged.
+fn apply_filter_recursive(
+    json: serde_json::Value,
+    filters: &HashMap<String, String>,
+) -> serde_json::Value {
+    match json {
+        serde_json::Value::Array(arr) => {
+            // Only filter if the array contains at least one object item.
+            // Pure primitive arrays (e.g. ["GET","POST"] or [200,404]) pass through.
+            if arr.iter().any(|v| matches!(v, serde_json::Value::Object(_))) {
+                let result: Vec<serde_json::Value> = arr
+                    .into_iter()
+                    .filter(|item| match item {
+                        serde_json::Value::Object(_) => item_matches_filters(item, filters),
+                        _ => true, // keep non-object items in a mixed array
+                    })
+                    .collect();
+                serde_json::Value::Array(result)
+            } else {
+                serde_json::Value::Array(arr)
+            }
+        }
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .map(|(k, v)| (k, apply_filter_recursive(v, filters)))
+                .collect(),
+        ),
+        other => other,
+    }
+}
+
+/// Returns true when every filter `(key, expected)` is found at any depth within `item`.
+fn item_matches_filters(item: &serde_json::Value, filters: &HashMap<String, String>) -> bool {
+    filters.iter().all(|(key, expected)| json_has_field(item, key, expected))
+}
+
+fn json_has_field(json: &serde_json::Value, key: &str, expected: &str) -> bool {
+    match json {
+        serde_json::Value::Object(map) => {
+            if let Some(val) = map.get(key) {
+                if json_value_eq(val, expected) {
+                    return true;
+                }
+            }
+            map.values().any(|v| json_has_field(v, key, expected))
+        }
+        serde_json::Value::Array(arr) => arr.iter().any(|v| json_has_field(v, key, expected)),
+        _ => false,
+    }
+}
+
+fn json_value_eq(val: &serde_json::Value, expected: &str) -> bool {
+    match val {
+        serde_json::Value::String(s) => s == expected,
+        serde_json::Value::Number(n) => n.to_string() == expected,
+        serde_json::Value::Bool(b) => b.to_string() == expected,
+        serde_json::Value::Null => expected == "null",
+        _ => false,
+    }
 }
 
 /// Iterate mocks and return the best match: exact method beats ANY.

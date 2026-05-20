@@ -25,7 +25,14 @@ pub struct CreateMockBody {
     pub response_status: Option<u16>,
     pub response_headers: Option<HashMap<String, String>>,
     pub response_body: Option<String>,
+    pub request_params: Option<HashMap<String, String>>,
     pub response_delay_ms: Option<u64>,
+    pub pagination_enabled: Option<bool>,
+    pub pagination_page_size: Option<u32>,
+    pub pagination_page_param: Option<String>,
+    pub pagination_size_param: Option<String>,
+    pub pagination_data_field: Option<String>,
+    pub pagination_total_field: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -39,7 +46,14 @@ pub struct UpdateMockBody {
     pub response_headers: Option<HashMap<String, String>>,
     pub response_body: Option<String>,
     pub response_delay_ms: Option<u64>,
+    pub request_params: Option<HashMap<String, String>>,
     pub enabled: Option<bool>,
+    pub pagination_enabled: Option<bool>,
+    pub pagination_page_size: Option<u32>,
+    pub pagination_page_param: Option<String>,
+    pub pagination_size_param: Option<String>,
+    pub pagination_data_field: Option<String>,
+    pub pagination_total_field: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -71,7 +85,14 @@ pub async fn create_mock(
         response_status: body.response_status.unwrap_or(200),
         response_headers: body.response_headers.unwrap_or_default(),
         response_body: body.response_body.unwrap_or_default(),
+        request_params: body.request_params.unwrap_or_default(),
         response_delay_ms: body.response_delay_ms.unwrap_or(0),
+        pagination_enabled: body.pagination_enabled.unwrap_or(false),
+        pagination_page_size: body.pagination_page_size.unwrap_or(10),
+        pagination_page_param: body.pagination_page_param.unwrap_or_else(|| "page".into()),
+        pagination_size_param: body.pagination_size_param.unwrap_or_else(|| "page_size".into()),
+        pagination_data_field: body.pagination_data_field.unwrap_or_default(),
+        pagination_total_field: body.pagination_total_field.unwrap_or_default(),
     };
     match state.mock_store.create_mock(req).await {
         Ok(m) => {
@@ -109,7 +130,14 @@ pub async fn update_mock(
         response_headers: body.response_headers,
         response_body: body.response_body,
         response_delay_ms: body.response_delay_ms,
+        request_params: body.request_params,
         enabled: body.enabled,
+        pagination_enabled: body.pagination_enabled,
+        pagination_page_size: body.pagination_page_size,
+        pagination_page_param: body.pagination_page_param,
+        pagination_size_param: body.pagination_size_param,
+        pagination_data_field: body.pagination_data_field,
+        pagination_total_field: body.pagination_total_field,
     };
     match state.mock_store.update_mock(id, req).await {
         Ok(m) => {

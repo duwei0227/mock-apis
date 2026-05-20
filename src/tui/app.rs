@@ -9,11 +9,18 @@ use crate::AppState;
 pub const PORT_ID_FIELD_IDX: usize = 0;
 pub const METHOD_FIELD_IDX: usize = 1;
 pub const PATH_FIELD_IDX: usize = 2;
-pub const HEADER_FIELD_IDX: usize = 7;
-pub const BODY_SOURCE_FIELD_IDX: usize = 8;
-pub const BODY_FIELD_IDX: usize = 9;
+pub const REQUEST_PARAMS_FIELD_IDX: usize = 5;
+pub const HEADER_FIELD_IDX: usize = 8;
+pub const BODY_SOURCE_FIELD_IDX: usize = 9;
+pub const BODY_FIELD_IDX: usize = 10;
+pub const PAGINATION_ENABLED_FIELD_IDX: usize = 11;
+pub const PAGINATION_PAGE_PARAM_FIELD_IDX: usize = 12;
+pub const PAGINATION_SIZE_PARAM_FIELD_IDX: usize = 13;
+pub const PAGINATION_DATA_FIELD_IDX: usize = 14;
+pub const PAGINATION_TOTAL_FIELD_IDX: usize = 15;
 pub const HTTP_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE"];
 pub const BODY_SOURCES: &[&str] = &["Inline", "File"];
+pub const BOOL_OPTIONS: &[&str] = &["Off", "On"];
 pub const COMMON_HEADERS: &[&str] = &[
     "Content-Type: application/json",
     "Content-Type: text/plain",
@@ -52,6 +59,20 @@ fn format_headers(h: &HashMap<String, String>) -> String {
         .map(|(k, v)| format!("{}: {}", k, v))
         .collect::<Vec<_>>()
         .join(" | ")
+}
+
+/// Parse pipe-separated param names into a HashMap with empty values.
+fn parse_param_names(s: &str) -> HashMap<String, String> {
+    s.split('|')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .map(|p| (p.to_owned(), String::new()))
+        .collect()
+}
+
+/// Format param names (keys only) as a pipe-separated string.
+fn format_param_names(h: &HashMap<String, String>) -> String {
+    h.keys().cloned().collect::<Vec<_>>().join(" | ")
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,6 +129,7 @@ pub struct App {
     pub modal_field_idx: usize,
     pub modal_cursor_pos: usize,
     pub modal_body_scroll: usize,
+    pub modal_scroll: usize,
     pub cancel_confirm_pending: bool,
     pub confirm_message: String,
     pub confirm_action: Option<ConfirmAction>,
@@ -156,6 +178,7 @@ impl App {
             modal_field_idx: 0,
             modal_cursor_pos: 0,
             modal_body_scroll: 0,
+            modal_scroll: 0,
             cancel_confirm_pending: false,
             confirm_message: String::new(),
             confirm_action: None,
@@ -279,6 +302,7 @@ impl App {
             self.modal_fields = vec![port.to_string(), label];
             self.modal_field_idx = 0;
             self.modal_cursor_pos = self.modal_fields[0].chars().count();
+            self.modal_scroll = 0;
         }
     }
 
@@ -318,9 +342,41 @@ impl App {
         }
     }
 
+    pub fn pagination_on(&self) -> bool {
+        self.modal_fields.get(PAGINATION_ENABLED_FIELD_IDX)
+            .map(|s| s == "On")
+            .unwrap_or(false)
+    }
+
+    /// Returns true if the given modal field index should be hidden given the current state.
+    pub fn is_mock_field_hidden(&self, fi: usize) -> bool {
+        if self.modal_fields.len() < 12 { return false; }
+        if fi == REQUEST_PARAMS_FIELD_IDX {
+            let method = self.modal_fields.get(METHOD_FIELD_IDX).map(|s| s.as_str()).unwrap_or("GET");
+            return method == "PUT" || method == "DELETE";
+        }
+        if matches!(fi, PAGINATION_PAGE_PARAM_FIELD_IDX..=PAGINATION_TOTAL_FIELD_IDX) {
+            return !self.pagination_on();
+        }
+        false
+    }
+
+    pub fn cycle_bool_field(&mut self, idx: usize, forward: bool) {
+        if let Some(current) = self.modal_fields.get(idx) {
+            let pos = BOOL_OPTIONS.iter().position(|&s| s == current.as_str()).unwrap_or(0);
+            let next = if forward {
+                (pos + 1) % BOOL_OPTIONS.len()
+            } else {
+                (pos + BOOL_OPTIONS.len() - 1) % BOOL_OPTIONS.len()
+            };
+            if let Some(field) = self.modal_fields.get_mut(idx) {
+                *field = BOOL_OPTIONS[next].to_owned();
+            }
+        }
+    }
+
     pub fn open_mock_create(&mut self) {
         self.modal = Some(ModalKind::MockCreate);
-        // fields: [port_id, method, path, name, desc, status, delay, headers, body_source, body]
         let port_id = self.ports.first().map(|p| p.id.to_string()).unwrap_or_default();
         self.modal_fields = vec![
             port_id,
@@ -328,14 +384,21 @@ impl App {
             "/".into(),
             String::new(),
             String::new(),
+            String::new(),     // request_params
             "200".into(),
             "0".into(),
             String::new(),
             "Inline".into(),
             String::new(),
+            "Off".into(),      // pagination_enabled
+            "page".into(),     // pagination_page_param
+            "pageSize".into(), // pagination_size_param
+            String::new(),     // pagination_data_field
+            String::new(),     // pagination_total_field
         ];
         self.modal_field_idx = 0;
         self.modal_cursor_pos = 0;
+        self.modal_scroll = 0;
     }
 
     pub fn open_mock_edit(&mut self) {
@@ -352,37 +415,48 @@ impl App {
                 m.path.clone(),
                 m.name.clone(),
                 m.description.clone(),
+                format_param_names(&m.request_params),
                 m.response_status.to_string(),
                 m.response_delay_ms.to_string(),
                 format_headers(&m.response_headers),
                 body_source,
                 body,
+                if m.pagination_enabled { "On".into() } else { "Off".into() },
+                m.pagination_page_param.clone(),
+                m.pagination_size_param.clone(),
+                m.pagination_data_field.clone(),
+                m.pagination_total_field.clone(),
             ];
             self.modal_field_idx = 0;
             self.modal_cursor_pos = self.modal_fields[0].chars().count();
+            self.modal_scroll = 0;
         }
     }
 
     pub fn modal_field_next(&mut self) {
         let len = self.modal_fields.len();
-        if len > 0 {
+        if len == 0 { return; }
+        for _ in 0..len {
             self.modal_field_idx = (self.modal_field_idx + 1) % len;
-            self.modal_cursor_pos = self.modal_fields
-                .get(self.modal_field_idx)
-                .map(|f| f.chars().count())
-                .unwrap_or(0);
+            if !self.is_mock_field_hidden(self.modal_field_idx) { break; }
         }
+        self.modal_cursor_pos = self.modal_fields
+            .get(self.modal_field_idx)
+            .map(|f| f.chars().count())
+            .unwrap_or(0);
     }
 
     pub fn modal_field_prev(&mut self) {
         let len = self.modal_fields.len();
-        if len > 0 {
+        if len == 0 { return; }
+        for _ in 0..len {
             self.modal_field_idx = (self.modal_field_idx + len - 1) % len;
-            self.modal_cursor_pos = self.modal_fields
-                .get(self.modal_field_idx)
-                .map(|f| f.chars().count())
-                .unwrap_or(0);
+            if !self.is_mock_field_hidden(self.modal_field_idx) { break; }
         }
+        self.modal_cursor_pos = self.modal_fields
+            .get(self.modal_field_idx)
+            .map(|f| f.chars().count())
+            .unwrap_or(0);
     }
 
     pub fn modal_type_char(&mut self, c: char) {
@@ -465,6 +539,7 @@ impl App {
         self.modal_field_idx = 0;
         self.modal_cursor_pos = 0;
         self.modal_body_scroll = 0;
+        self.modal_scroll = 0;
         self.cancel_confirm_pending = false;
         self.modal_error = None;
     }
@@ -500,10 +575,10 @@ impl App {
     /// Build a CreateMockRequest from current modal fields.
     pub fn build_create_mock(&self) -> Option<CreateMockRequest> {
         let f = &self.modal_fields;
-        if f.len() < 10 { return None; }
+        if f.len() < 11 { return None; }
         use crate::models::HttpMethod;
         use std::str::FromStr;
-        let response_body = encode_body_field(&f[8], &f[9]);
+        let response_body = encode_body_field(&f[9], &f[10]);
         Some(CreateMockRequest {
             port_id: f[0].parse().ok()?,
             method: HttpMethod::from_str(&f[1]).unwrap_or(HttpMethod::GET),
@@ -511,10 +586,19 @@ impl App {
             name: f[3].clone(),
             description: f[4].clone(),
             request_schema: None,
-            response_status: f[5].parse().unwrap_or(200),
-            response_delay_ms: f[6].parse().unwrap_or(0),
-            response_headers: parse_headers(&f[7]),
+            request_params: parse_param_names(&f[5]),
+            response_status: f[6].parse().unwrap_or(200),
+            response_delay_ms: f[7].parse().unwrap_or(0),
+            response_headers: parse_headers(&f[8]),
             response_body,
+            pagination_enabled: f.get(PAGINATION_ENABLED_FIELD_IDX).map(|s| s == "On").unwrap_or(false),
+            pagination_page_size: 10,
+            pagination_page_param: f.get(PAGINATION_PAGE_PARAM_FIELD_IDX)
+                .filter(|s| !s.is_empty()).cloned().unwrap_or_else(|| "page".into()),
+            pagination_size_param: f.get(PAGINATION_SIZE_PARAM_FIELD_IDX)
+                .filter(|s| !s.is_empty()).cloned().unwrap_or_else(|| "pageSize".into()),
+            pagination_data_field: f.get(PAGINATION_DATA_FIELD_IDX).cloned().unwrap_or_default(),
+            pagination_total_field: f.get(PAGINATION_TOTAL_FIELD_IDX).cloned().unwrap_or_default(),
         })
     }
 
@@ -522,21 +606,27 @@ impl App {
         let f = &self.modal_fields;
         use crate::models::HttpMethod;
         use std::str::FromStr;
-        let response_body = if f.len() >= 10 {
-            Some(encode_body_field(f.get(8).map(|s| s.as_str()).unwrap_or("Inline"),
-                                   f.get(9).map(|s| s.as_str()).unwrap_or("")))
+        let response_body = if f.len() >= 11 {
+            Some(encode_body_field(f.get(9).map(|s| s.as_str()).unwrap_or("Inline"),
+                                   f.get(10).map(|s| s.as_str()).unwrap_or("")))
         } else {
-            f.get(9).cloned()
+            f.get(10).cloned()
         };
         UpdateMockRequest {
             method: f.get(1).and_then(|s| HttpMethod::from_str(s).ok()),
             path: f.get(2).cloned(),
             name: f.get(3).cloned(),
             description: f.get(4).cloned(),
-            response_status: f.get(5).and_then(|s| s.parse().ok()),
-            response_delay_ms: f.get(6).and_then(|s| s.parse().ok()),
-            response_headers: f.get(7).map(|s| parse_headers(s)),
+            request_params: f.get(REQUEST_PARAMS_FIELD_IDX).map(|s| parse_param_names(s)),
+            response_status: f.get(6).and_then(|s| s.parse().ok()),
+            response_delay_ms: f.get(7).and_then(|s| s.parse().ok()),
+            response_headers: f.get(8).map(|s| parse_headers(s)),
             response_body,
+            pagination_enabled: f.get(PAGINATION_ENABLED_FIELD_IDX).map(|s| s == "On"),
+            pagination_page_param: f.get(PAGINATION_PAGE_PARAM_FIELD_IDX).cloned(),
+            pagination_size_param: f.get(PAGINATION_SIZE_PARAM_FIELD_IDX).cloned(),
+            pagination_data_field: f.get(PAGINATION_DATA_FIELD_IDX).cloned(),
+            pagination_total_field: f.get(PAGINATION_TOTAL_FIELD_IDX).cloned(),
             ..Default::default()
         }
     }

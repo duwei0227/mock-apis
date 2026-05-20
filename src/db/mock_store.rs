@@ -58,6 +58,15 @@ fn row_to_mock(row: &rusqlite::Row<'_>) -> rusqlite::Result<MockApi> {
         response_body: row.get(9)?,
         response_delay_ms: row.get::<_, i64>(10)? as u64,
         enabled: row.get::<_, i64>(13).map(|v| v != 0).unwrap_or(true),
+        pagination_enabled: row.get::<_, i64>(14).map(|v| v != 0).unwrap_or(false),
+        pagination_page_size: row.get::<_, i64>(15).unwrap_or(10) as u32,
+        request_params: row.get::<_, String>(16).ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
+        pagination_page_param: row.get::<_, String>(17).unwrap_or_else(|_| "page".into()),
+        pagination_size_param: row.get::<_, String>(18).unwrap_or_else(|_| "page_size".into()),
+        pagination_data_field: row.get::<_, String>(19).unwrap_or_default(),
+        pagination_total_field: row.get::<_, String>(20).unwrap_or_default(),
         created_at,
         updated_at,
     })
@@ -66,7 +75,9 @@ fn row_to_mock(row: &rusqlite::Row<'_>) -> rusqlite::Result<MockApi> {
 const SELECT_COLS: &str =
     "id, port_id, name, description, method, path, request_schema, \
      response_status, response_headers, response_body, response_delay_ms, \
-     created_at, updated_at, enabled";
+     created_at, updated_at, enabled, \
+     pagination_enabled, pagination_page_size, request_params, \
+     pagination_page_param, pagination_size_param, pagination_data_field, pagination_total_field";
 
 #[async_trait]
 impl MockStore for SqliteMockStore {
@@ -110,6 +121,8 @@ impl MockStore for SqliteMockStore {
     async fn create_mock(&self, req: CreateMockRequest) -> Result<MockApi> {
         let headers_json =
             serde_json::to_string(&req.response_headers).unwrap_or_else(|_| "{}".to_owned());
+        let req_params_json =
+            serde_json::to_string(&req.request_params).unwrap_or_else(|_| "{}".to_owned());
         let schema_json = req
             .request_schema
             .as_ref()
@@ -117,18 +130,25 @@ impl MockStore for SqliteMockStore {
         let method_str = req.method.to_string();
         let delay = req.response_delay_ms as i64;
         let status = req.response_status as i64;
+        let pag_enabled = req.pagination_enabled as i64;
+        let pag_page_size = req.pagination_page_size as i64;
 
         self.conn
             .call(move |conn| {
                 conn.execute(
                     "INSERT INTO mock_apis \
                      (port_id, name, description, method, path, request_schema, \
-                      response_status, response_headers, response_body, response_delay_ms) \
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                      response_status, response_headers, response_body, response_delay_ms, \
+                      pagination_enabled, pagination_page_size, request_params, \
+                      pagination_page_param, pagination_size_param, pagination_data_field, pagination_total_field) \
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
                     rusqlite::params![
                         req.port_id, req.name, req.description, method_str,
                         req.path, schema_json, status, headers_json,
                         req.response_body, delay,
+                        pag_enabled, pag_page_size, req_params_json,
+                        req.pagination_page_param, req.pagination_size_param,
+                        req.pagination_data_field, req.pagination_total_field,
                     ],
                 )?;
                 let id = conn.last_insert_rowid();
@@ -165,6 +185,16 @@ impl MockStore for SqliteMockStore {
                 if let Some(v) = req.response_body  { push!("response_body", v); }
                 if let Some(v) = req.response_delay_ms { push!("response_delay_ms", v as i64); }
                 if let Some(v) = req.enabled        { push!("enabled", v as i64); }
+                if let Some(v) = req.pagination_enabled      { push!("pagination_enabled", v as i64); }
+                if let Some(v) = req.request_params {
+                    let j = serde_json::to_string(&v).unwrap_or_else(|_| "{}".into());
+                    push!("request_params", j);
+                }
+                if let Some(v) = req.pagination_page_size    { push!("pagination_page_size", v as i64); }
+                if let Some(v) = req.pagination_page_param   { push!("pagination_page_param", v); }
+                if let Some(v) = req.pagination_size_param   { push!("pagination_size_param", v); }
+                if let Some(v) = req.pagination_data_field   { push!("pagination_data_field", v); }
+                if let Some(v) = req.pagination_total_field  { push!("pagination_total_field", v); }
                 if let Some(v) = req.response_headers {
                     let j = serde_json::to_string(&v).unwrap_or_else(|_| "{}".into());
                     push!("response_headers", j);
