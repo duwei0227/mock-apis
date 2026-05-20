@@ -101,6 +101,7 @@ import { usePortsStore } from '../stores/ports'
 import { useMocksStore } from '../stores/mocks'
 import { useLogsStore } from '../stores/logs'
 import { InfoApi, type PortConfig } from '../api/client'
+import { copyText } from '../utils/clipboard'
 
 const portsStore = usePortsStore()
 const mocksStore = useMocksStore()
@@ -110,7 +111,7 @@ const serverIp = ref('127.0.0.1')
 const copied   = ref<number | null>(null)
 
 function copyUrl(p: PortConfig) {
-  navigator.clipboard.writeText(`http://${serverIp.value}:${p.port}`)
+  copyText(`http://${serverIp.value}:${p.port}`)
   copied.value = p.id
   setTimeout(() => { copied.value = null }, 1500)
 }

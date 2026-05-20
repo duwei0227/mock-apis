@@ -100,6 +100,7 @@ import MockDialog from '../components/mocks/MockDialog.vue'
 import MockDetail from '../components/mocks/MockDetail.vue'
 import type { MockApi } from '../api/client'
 import { InfoApi } from '../api/client'
+import { copyText } from '../utils/clipboard'
 import { computed } from 'vue'
 
 const portsStore = usePortsStore()
@@ -183,7 +184,7 @@ function duplicateMock(mock: MockApi) {
 
 function copyAddress(portId: number) {
   const port = portMap.value[portId] ?? portId
-  navigator.clipboard.writeText(`${serverIp.value}:${port}`)
+  copyText(`${serverIp.value}:${port}`)
   toast.add({ severity: 'success', summary: 'Copied', detail: `${serverIp.value}:${port}`, life: 2000 })
 }
 
