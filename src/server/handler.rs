@@ -224,6 +224,7 @@ fn apply_filter_and_pagination(
     };
 
     // Query params take priority over body params; only keys defined in mock.request_params are used.
+    // Empty values are excluded — a missing or blank param does not participate in filtering.
     let filters: HashMap<String, String> = mock
         .request_params
         .keys()
@@ -231,6 +232,7 @@ fn apply_filter_and_pagination(
             query_params
                 .get(k)
                 .or_else(|| body_params.get(k))
+                .filter(|v| !v.is_empty())
                 .map(|v| (k.clone(), v.clone()))
         })
         .collect();
