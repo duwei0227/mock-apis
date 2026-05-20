@@ -116,12 +116,16 @@ A **mock** defines how a port responds to a specific request:
 | Field | Description |
 |-------|-------------|
 | Port | Which port server handles this mock |
-| Method | HTTP method (`GET`, `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`, `OPTIONS`, `ANY`) |
+| Method | HTTP method (`GET`, `POST`, `PUT`, `DELETE`, `ANY`) |
 | Path | URL path, supports `{param}` placeholders and `*` wildcards |
+| Name | Short label shown in the mock list |
+| Description | Optional longer description |
+| Request Params | Param names to filter the JSON response by (see below) |
 | Response Status | HTTP status code to return (default: 200) |
 | Response Headers | Key-value pairs added to the response |
 | Response Body | Body text, file path, or template with built-in functions |
 | Delay (ms) | Artificial delay before responding |
+| Pagination | Enable automatic JSON array pagination (see below) |
 
 **Path matching rules:**
 - `{param}` matches a single path segment (e.g. `/users/{id}` matches `/users/42`)
@@ -133,6 +137,31 @@ A **mock** defines how a port responds to a specific request:
 **Body source:**
 - **Inline** — type the response body directly
 - **File** — enter an absolute path to a `.json` or `.txt` file on the server; the file is read on each request
+
+**Request Params filtering:**
+
+Add one or more param names to a mock to enable response filtering. When a request arrives with a matching query param (or POST body field), the JSON response is filtered to only return items where that field equals the given value.
+
+- Works on `GET` and `POST` mocks only (hidden for `PUT` and `DELETE`)
+- Filtering is recursive — finds and filters object arrays at any nesting depth
+- Primitive arrays (e.g. `["GET","POST"]`) are never filtered
+- Non-JSON responses pass through unchanged
+- A param with an empty value (e.g. `?name=`) is ignored — the full dataset is returned
+
+Example: a mock with param `name` and response body `[{"name":"alice"},{"name":"bob"}]` will return only `[{"name":"alice"}]` when called with `?name=alice`.
+
+**Pagination:**
+
+Enable pagination on `GET` / `POST` mocks to automatically slice a JSON array by page. Configure:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Page param | Query param for the page number | `page` |
+| Page size param | Query param for items per page | `pageSize` (10 if not sent) |
+| Data field | Dot-notation path to the array (e.g. `body.list`); empty = top-level array | — |
+| Total field | Dot-notation path to write the total count back (e.g. `body.total`); empty = skip | — |
+
+When **Data field** is empty the response is replaced with a `{items, total, page, page_size}` envelope. When it is set, the original JSON structure is preserved and only the target array is replaced with the current page slice.
 
 ### Logs
 

@@ -1,9 +1,36 @@
 # Changelog
 
-## [0.3.0] - 2026-05-08
+## [0.3.0] - 2026-05-20
 
 ### Added
 
+- **Request param filtering** — configure one or more param names on a mock; incoming
+  requests whose query string (or POST body) contains a matching key-value pair will have
+  the JSON response filtered to only return items where that field equals the given value.
+  Filtering is recursive: works on top-level arrays, nested object arrays, and any depth
+  of wrapping. Primitive arrays (e.g. enum lists) are never filtered. Only applies to
+  JSON responses; non-JSON bodies pass through unchanged. Empty param values are ignored
+  (no filtering applied). PUT and DELETE mocks do not support param filtering.
+- **Pagination** — enable pagination on GET / POST mocks with configurable query param
+  names, data field path, and total field path:
+  - **Page param** — query param for the page number (default `page`)
+  - **Page size param** — query param for items per page (default `pageSize`); defaults
+    to 10 items when not supplied in the request
+  - **Data field** — field path containing the array to paginate; supports dot-notation
+    for nested fields (e.g. `body.list`); empty = top-level array, wrapped in a
+    `{items, total, page, page_size}` envelope
+  - **Total field** — field path to overwrite with the computed total count; supports
+    dot-notation (e.g. `body.total`); empty = skip
+- **Address column in Mocks list** — both the web dashboard and TUI now show `IP:Port`
+  in the mock list. The dashboard column includes a copy button.
+- **TUI full pagination config** — the mock create/edit modal exposes all four pagination
+  fields (Page param, Page size param, Data field, Total field) when Pagination is
+  enabled, matching the web dashboard.
+- **TUI Request Params chips display** — inactive Request Params field renders each param
+  as a `[name]` chip; shows a placeholder hint when empty; `+` appends a `|` separator
+  to add another entry.
+- **TUI Response Headers chips display** — same chip / placeholder / `+` behaviour as
+  Request Params.
 - **System IP column in TUI Ports tab** — the local machine IP is resolved at startup
   and shown left of the Port column so you can see the full access address at a glance.
 - **Log clear key in TUI** — press `c` on the Logs tab to clear the active log tab
@@ -30,6 +57,15 @@
 
 ### Fixed
 
+- **Clipboard copy on plain HTTP (Windows LAN)** — `navigator.clipboard` is unavailable
+  in non-secure contexts; copy buttons now fall back to `document.execCommand('copy')`
+  so they work when the dashboard is accessed via a LAN IP on Windows.
+- **Empty request param values ignored** — if a configured param is sent with an empty
+  value (e.g. `?name=`), it is excluded from the filter set and the full dataset is
+  returned instead of filtering against an empty string.
+- **Windows CI build** — `build.rs` now skips the npm build step when `frontend/dist/`
+  already exists (pre-built by CI) and uses `npm.cmd` on Windows to avoid
+  `program not found` errors.
 - **Dark mode splitter gutter** — the white divider line between the mock list and detail
   panel in the web dashboard is now styled to match the dark surface colour.
 - **Log detail visual hierarchy** — sub-section labels (`Request Headers`, `Request Body`,
